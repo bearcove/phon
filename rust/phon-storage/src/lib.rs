@@ -69,6 +69,184 @@ impl AlignedWriter {
     }
 }
 
+const DENSE_MAGIC: [u8; 8] = *b"PHONDNS\0";
+const DENSE_VERSION: u16 = 1;
+const DENSE_HEADER_SIZE: usize = 64;
+
+/// Encoder for a portable fixed-stride PHON row range.
+pub struct DenseRangeWriter;
+
+impl DenseRangeWriter {
+    pub fn encode(
+        stride: u32,
+        alignment: u32,
+        payload: impl IntoIterator<Item = u8>,
+    ) -> Result<Vec<u8>, AlignedError> {
+        validate_dense_layout(stride, alignment)?;
+        let payload = payload.into_iter().collect::<Vec<_>>();
+        let stride_usize = stride as usize;
+        if !payload.len().is_multiple_of(stride_usize) {
+            return Err(AlignedError::InvalidDensePayload {
+                len: payload.len(),
+                stride,
+            });
+        }
+        let count = payload.len() / stride_usize;
+        let payload_offset = align_up(DENSE_HEADER_SIZE, alignment as usize)?;
+        let file_len = payload_offset
+            .checked_add(payload.len())
+            .ok_or(AlignedError::SizeOverflow)?;
+        let mut bytes = vec![0; file_len];
+        bytes[..8].copy_from_slice(&DENSE_MAGIC);
+        bytes[8..10].copy_from_slice(&DENSE_VERSION.to_le_bytes());
+        bytes[10] = 1;
+        bytes[12..16].copy_from_slice(&(DENSE_HEADER_SIZE as u32).to_le_bytes());
+        bytes[16..20].copy_from_slice(&stride.to_le_bytes());
+        bytes[20..24].copy_from_slice(&alignment.to_le_bytes());
+        bytes[24..32].copy_from_slice(&(count as u64).to_le_bytes());
+        bytes[32..40].copy_from_slice(&(payload_offset as u64).to_le_bytes());
+        bytes[40..48].copy_from_slice(&(payload.len() as u64).to_le_bytes());
+        bytes[48..56].copy_from_slice(&(file_len as u64).to_le_bytes());
+        bytes[payload_offset..].copy_from_slice(&payload);
+        Ok(bytes)
+    }
+}
+
+/// Fully validated borrowed fixed-stride PHON row range.
+pub struct DenseRange<'a> {
+    bytes: &'a [u8],
+    payload: &'a [u8],
+    count: usize,
+    stride: usize,
+}
+
+impl<'a> DenseRange<'a> {
+    pub fn parse(
+        bytes: &'a [u8],
+        expected_count: usize,
+        expected_stride: u32,
+        expected_alignment: u32,
+    ) -> Result<Self, AlignedError> {
+        validate_dense_layout(expected_stride, expected_alignment)?;
+        if bytes.len() < DENSE_HEADER_SIZE {
+            return Err(AlignedError::Truncated {
+                needed: DENSE_HEADER_SIZE,
+                actual: bytes.len(),
+            });
+        }
+        if bytes[..8] != DENSE_MAGIC {
+            return Err(AlignedError::BadMagic);
+        }
+        if read_u16(bytes, 8)? != DENSE_VERSION {
+            return Err(AlignedError::UnsupportedVersion(read_u16(bytes, 8)?));
+        }
+        if bytes[10] != 1 {
+            return Err(AlignedError::WrongByteOrder(bytes[10]));
+        }
+        if read_u32(bytes, 12)? as usize != DENSE_HEADER_SIZE {
+            return Err(AlignedError::BadHeader);
+        }
+        let stride = read_u32(bytes, 16)?;
+        let alignment = read_u32(bytes, 20)?;
+        validate_dense_layout(stride, alignment)?;
+        if stride != expected_stride || alignment != expected_alignment {
+            return Err(AlignedError::WrongDenseLayout {
+                expected_stride,
+                actual_stride: stride,
+                expected_alignment,
+                actual_alignment: alignment,
+            });
+        }
+        let count = usize_from_u64(read_u64(bytes, 24)?)?;
+        if count != expected_count {
+            return Err(AlignedError::WrongDenseCount {
+                expected: expected_count,
+                actual: count,
+            });
+        }
+        let payload_offset = usize_from_u64(read_u64(bytes, 32)?)?;
+        let payload_len = usize_from_u64(read_u64(bytes, 40)?)?;
+        let file_len = usize_from_u64(read_u64(bytes, 48)?)?;
+        if file_len != bytes.len() {
+            return Err(AlignedError::Truncated {
+                needed: file_len,
+                actual: bytes.len(),
+            });
+        }
+        if !payload_offset.is_multiple_of(alignment as usize) {
+            return Err(AlignedError::MisalignedReference {
+                offset: payload_offset as u64,
+                alignment: alignment as usize,
+            });
+        }
+        let expected_len = count
+            .checked_mul(stride as usize)
+            .ok_or(AlignedError::SizeOverflow)?;
+        if payload_len != expected_len {
+            return Err(AlignedError::InvalidDensePayload {
+                len: payload_len,
+                stride,
+            });
+        }
+        let payload_end = payload_offset
+            .checked_add(payload_len)
+            .ok_or(AlignedError::SizeOverflow)?;
+        let payload =
+            bytes
+                .get(payload_offset..payload_end)
+                .ok_or(AlignedError::ReferenceOutOfBounds {
+                    offset: payload_offset as u64,
+                    len: payload_len as u64,
+                    file_len: bytes.len(),
+                })?;
+        Ok(Self {
+            bytes,
+            payload,
+            count,
+            stride: stride as usize,
+        })
+    }
+
+    #[must_use]
+    pub const fn bytes(&self) -> &'a [u8] {
+        self.bytes
+    }
+
+    #[must_use]
+    pub const fn count(&self) -> usize {
+        self.count
+    }
+
+    #[must_use]
+    pub const fn stride(&self) -> usize {
+        self.stride
+    }
+
+    pub fn row(&self, index: usize) -> Result<&'a [u8], AlignedError> {
+        if index >= self.count {
+            return Err(AlignedError::IndexOutOfBounds {
+                index,
+                count: self.count,
+            });
+        }
+        let start = index
+            .checked_mul(self.stride)
+            .ok_or(AlignedError::SizeOverflow)?;
+        Ok(&self.payload[start..start + self.stride])
+    }
+}
+
+fn validate_dense_layout(stride: u32, alignment: u32) -> Result<(), AlignedError> {
+    if stride == 0
+        || alignment == 0
+        || !alignment.is_power_of_two()
+        || !stride.is_multiple_of(alignment)
+    {
+        return Err(AlignedError::InvalidDenseLayout { stride, alignment });
+    }
+    Ok(())
+}
+
 struct Encoder<'a> {
     bytes: Vec<u8>,
     registry: &'a AlignedRegistry,
@@ -1084,6 +1262,24 @@ pub enum AlignedError {
     },
     InvalidUtf8,
     InvalidChar,
+    InvalidDenseLayout {
+        stride: u32,
+        alignment: u32,
+    },
+    WrongDenseLayout {
+        expected_stride: u32,
+        actual_stride: u32,
+        expected_alignment: u32,
+        actual_alignment: u32,
+    },
+    WrongDenseCount {
+        expected: usize,
+        actual: usize,
+    },
+    InvalidDensePayload {
+        len: usize,
+        stride: u32,
+    },
 }
 
 impl AlignedError {
@@ -1104,3 +1300,45 @@ impl fmt::Display for AlignedError {
     }
 }
 impl std::error::Error for AlignedError {}
+
+#[cfg(test)]
+mod dense_range_tests {
+    use super::*;
+
+    #[test]
+    fn dense_rows_are_borrowed_with_explicit_layout() {
+        let rows = [[1u8, 0, 0, 0, 2, 0, 0, 0], [3, 0, 0, 0, 4, 0, 0, 0]];
+        let bytes = DenseRangeWriter::encode(8, 4, rows.into_iter().flatten()).expect("encode");
+        let range = DenseRange::parse(&bytes, 2, 8, 4).expect("parse");
+        assert_eq!(range.count(), 2);
+        assert_eq!(range.stride(), 8);
+        assert_eq!(range.row(0).expect("row 0"), &rows[0]);
+        assert_eq!(range.row(1).expect("row 1"), &rows[1]);
+        assert_eq!(range.bytes().as_ptr(), bytes.as_ptr());
+    }
+
+    #[test]
+    fn dense_rows_reject_bad_bounds_alignment_and_count() {
+        let bytes = DenseRangeWriter::encode(8, 4, [0u8; 16]).expect("encode");
+        assert!(matches!(
+            DenseRange::parse(&bytes, 3, 8, 4),
+            Err(AlignedError::WrongDenseCount {
+                expected: 3,
+                actual: 2
+            })
+        ));
+        assert!(matches!(
+            DenseRange::parse(&bytes, 2, 8, 3),
+            Err(AlignedError::InvalidDenseLayout {
+                stride: 8,
+                alignment: 3
+            })
+        ));
+        let mut truncated = bytes;
+        truncated.pop();
+        assert!(matches!(
+            DenseRange::parse(&truncated, 2, 8, 4),
+            Err(AlignedError::Truncated { .. })
+        ));
+    }
+}
