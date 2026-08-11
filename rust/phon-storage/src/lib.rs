@@ -121,6 +121,21 @@ pub struct DenseRange<'a> {
 }
 
 impl<'a> DenseRange<'a> {
+    pub fn parse_stored_layout(
+        bytes: &'a [u8],
+        expected_count: usize,
+        expected_stride: u32,
+    ) -> Result<Self, AlignedError> {
+        if bytes.len() < DENSE_HEADER_SIZE {
+            return Err(AlignedError::Truncated {
+                needed: DENSE_HEADER_SIZE,
+                actual: bytes.len(),
+            });
+        }
+        let alignment = read_u32(bytes, 20)?;
+        Self::parse(bytes, expected_count, expected_stride, alignment)
+    }
+
     pub fn parse(
         bytes: &'a [u8],
         expected_count: usize,
