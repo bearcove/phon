@@ -50,15 +50,25 @@ use crate::compat::{self, FieldMatch, VariantMatch, incompatible};
 
 type Result<T> = core::result::Result<T, CompactError>;
 
-impl From<LoweringError> for CompactError {
+enum FixedArrayLowerError {
+    Compact(CompactError),
+    Lowering(LoweringError),
+}
+
+impl From<LoweringError> for FixedArrayLowerError {
     fn from(error: LoweringError) -> Self {
-        match error {
-            LoweringError::ArrayBulkCopySizeOverflow => {
-                CompactError::Malformed("array bulk copy size overflow")
-            }
-            LoweringError::ArrayElementOffsetOverflow => {
-                CompactError::Malformed("array element offset overflow")
-            }
+        Self::Lowering(error)
+    }
+}
+
+fn fixed_array_error(error: FixedArrayLowerError) -> CompactError {
+    match error {
+        FixedArrayLowerError::Compact(error) => error,
+        FixedArrayLowerError::Lowering(LoweringError::ArrayBulkCopySizeOverflow) => {
+            CompactError::Malformed("array bulk copy size overflow")
+        }
+        FixedArrayLowerError::Lowering(LoweringError::ArrayElementOffsetOverflow) => {
+            CompactError::Malformed("array element offset overflow")
         }
     }
 }
@@ -719,8 +729,9 @@ fn lower_fixed_array(
     out: &mut MemProgram,
 ) -> Result<()> {
     lower_fixed_array_elements(count, stride, base, out, |element_base, out| {
-        lower_node(element, reg, element_base, out)
+        lower_node(element, reg, element_base, out).map_err(FixedArrayLowerError::Compact)
     })
+    .map_err(fixed_array_error)
 }
 
 fn lower_decode_fixed_array(
@@ -734,7 +745,9 @@ fn lower_decode_fixed_array(
 ) -> Result<()> {
     lower_fixed_array_elements(count, stride, base, out, |element_base, out| {
         lower_decode_node(writer_element, element, reg, element_base, out)
+            .map_err(FixedArrayLowerError::Compact)
     })
+    .map_err(fixed_array_error)
 }
 
 fn require_fixed_array_count(count: usize, dimensions: &[u64]) -> Result<()> {
