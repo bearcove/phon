@@ -125,6 +125,51 @@ pub struct DenseRange<'a> {
     payload: &'a [u8],
     count: usize,
     stride: usize,
+    fields: Vec<DenseField>,
+}
+
+/// One validated fixed-stride row with schema-derived named primitive access.
+pub struct DenseRowRef<'a> {
+    bytes: &'a [u8],
+    fields: &'a [DenseField],
+}
+
+impl DenseRowRef<'_> {
+    fn field(&self, name: &str, expected: Primitive) -> Result<&DenseField, AlignedError> {
+        let field = self
+            .fields
+            .iter()
+            .find(|field| field.name == name)
+            .ok_or_else(|| AlignedError::UnknownField(name.to_owned()))?;
+        if field.primitive != expected {
+            return Err(AlignedError::WrongDenseFieldType {
+                field: name.to_owned(),
+                expected,
+                actual: field.primitive,
+            });
+        }
+        Ok(field)
+    }
+
+    pub fn u8(&self, name: &str) -> Result<u8, AlignedError> {
+        let field = self.field(name, Primitive::U8)?;
+        Ok(self.bytes[field.offset])
+    }
+
+    pub fn u32(&self, name: &str) -> Result<u32, AlignedError> {
+        let field = self.field(name, Primitive::U32)?;
+        read_u32(self.bytes, field.offset)
+    }
+
+    pub fn i32(&self, name: &str) -> Result<i32, AlignedError> {
+        let field = self.field(name, Primitive::I32)?;
+        Ok(i32::from_le_bytes(read_array(self.bytes, field.offset)?))
+    }
+
+    pub fn u64(&self, name: &str) -> Result<u64, AlignedError> {
+        let field = self.field(name, Primitive::U64)?;
+        read_u64(self.bytes, field.offset)
+    }
 }
 
 impl<'a> DenseRange<'a> {
@@ -211,6 +256,7 @@ impl<'a> DenseRange<'a> {
             payload,
             count,
             stride,
+            fields: layout.fields,
         })
     }
 
@@ -240,6 +286,13 @@ impl<'a> DenseRange<'a> {
             .checked_mul(self.stride)
             .ok_or(AlignedError::SizeOverflow)?;
         Ok(&self.payload[start..start + self.stride])
+    }
+
+    pub fn typed_row(&self, index: usize) -> Result<DenseRowRef<'_>, AlignedError> {
+        Ok(DenseRowRef {
+            bytes: self.row(index)?,
+            fields: &self.fields,
+        })
     }
 }
 
@@ -1451,6 +1504,11 @@ pub enum AlignedError {
     },
     UnknownVariant(u32),
     UnknownField(String),
+    WrongDenseFieldType {
+        field: String,
+        expected: Primitive,
+        actual: Primitive,
+    },
     IndexOutOfBounds {
         index: usize,
         count: usize,
@@ -1553,6 +1611,52 @@ mod dense_range_tests {
         assert_eq!(range.row(0).expect("row 0"), &[1, 0, 0, 0, 2, 0, 0, 0]);
         assert_eq!(range.row(1).expect("row 1"), &[3, 0, 0, 0, 4, 0, 0, 0]);
         assert_eq!(range.bytes().as_ptr(), bytes.as_ptr());
+    }
+
+    #[test]
+    fn dense_row_reads_named_typed_fields_with_padding() {
+        let row = Schema {
+            id: SchemaId::from_raw(10),
+            type_params: Vec::new(),
+            kind: SchemaKind::Struct {
+                name: "PaddedRow".into(),
+                fields: vec![
+                    Field {
+                        name: "tag".into(),
+                        schema: SchemaRef::concrete(primitive_id(Primitive::U8)),
+                        required: true,
+                    },
+                    Field {
+                        name: "value".into(),
+                        schema: SchemaRef::concrete(primitive_id(Primitive::U32)),
+                        required: true,
+                    },
+                ],
+            },
+        };
+        let list = Schema {
+            id: SchemaId::from_raw(11),
+            type_params: Vec::new(),
+            kind: SchemaKind::List {
+                element: SchemaRef::concrete(row.id),
+            },
+        };
+        let schemas = resolve_ids(vec![row, list]);
+        let root = schemas[1].id;
+        let registry = AlignedRegistry::new(schemas);
+        let mut object = VObject::new();
+        object.insert(VString::new("tag"), Value::from(7u8));
+        object.insert(VString::new("value"), Value::from(0x1234_5678u32));
+        let bytes = DenseRangeWriter::encode(&VArray::from_iter([object]).into(), root, &registry)
+            .expect("encode");
+        let range = DenseRange::parse(&bytes, root, &registry).expect("parse");
+        let row = range.typed_row(0).expect("row");
+        assert_eq!(row.u8("tag").expect("tag"), 7);
+        assert_eq!(row.u32("value").expect("value"), 0x1234_5678);
+        assert!(matches!(
+            row.u32("tag"),
+            Err(AlignedError::WrongDenseFieldType { .. })
+        ));
     }
 
     #[test]
