@@ -69,6 +69,438 @@ impl AlignedWriter {
     }
 }
 
+const DENSE_MAGIC: [u8; 8] = *b"PHONDNS\0";
+const DENSE_VERSION: u16 = 1;
+const DENSE_HEADER_SIZE: usize = 64;
+
+/// Encoder for a portable fixed-stride PHON row range.
+pub struct DenseRangeWriter;
+
+impl DenseRangeWriter {
+    pub fn encode(
+        value: &Value,
+        root: SchemaId,
+        registry: &AlignedRegistry,
+    ) -> Result<Vec<u8>, AlignedError> {
+        let layout = dense_layout(root, registry)?;
+        let rows = value
+            .as_array()
+            .ok_or(AlignedError::TypeMismatch("dense list"))?;
+        let payload_len = rows
+            .len()
+            .checked_mul(layout.stride)
+            .ok_or(AlignedError::SizeOverflow)?;
+        let payload_offset = align_up(DENSE_HEADER_SIZE, layout.alignment)?;
+        let file_len = payload_offset
+            .checked_add(payload_len)
+            .ok_or(AlignedError::SizeOverflow)?;
+        let mut bytes = vec![0; file_len];
+        bytes[..8].copy_from_slice(&DENSE_MAGIC);
+        bytes[8..10].copy_from_slice(&DENSE_VERSION.to_le_bytes());
+        bytes[10] = 1;
+        bytes[12..16].copy_from_slice(&(DENSE_HEADER_SIZE as u32).to_le_bytes());
+        bytes[16..24].copy_from_slice(&root.as_u64().to_le_bytes());
+        bytes[24..28].copy_from_slice(&(layout.stride as u32).to_le_bytes());
+        bytes[28..32].copy_from_slice(&(layout.alignment as u32).to_le_bytes());
+        bytes[32..40].copy_from_slice(&(rows.len() as u64).to_le_bytes());
+        bytes[40..48].copy_from_slice(&(payload_offset as u64).to_le_bytes());
+        bytes[48..56].copy_from_slice(&(payload_len as u64).to_le_bytes());
+        bytes[56..64].copy_from_slice(&(file_len as u64).to_le_bytes());
+        for index in 0..rows.len() {
+            let row = rows.get(index).expect("dense row in bounds");
+            let row_start = payload_offset + index * layout.stride;
+            encode_dense_row(
+                row,
+                &layout.fields,
+                &mut bytes[row_start..row_start + layout.stride],
+            )?;
+        }
+        Ok(bytes)
+    }
+}
+
+/// Fully validated borrowed fixed-stride PHON row range.
+pub struct DenseRange<'a> {
+    bytes: &'a [u8],
+    payload: &'a [u8],
+    count: usize,
+    stride: usize,
+    fields: Vec<DenseField>,
+}
+
+/// One validated fixed-stride row with schema-derived named primitive access.
+pub struct DenseRowRef<'a> {
+    bytes: &'a [u8],
+    fields: &'a [DenseField],
+}
+
+impl DenseRowRef<'_> {
+    fn field(&self, name: &str, expected: Primitive) -> Result<&DenseField, AlignedError> {
+        let field = self
+            .fields
+            .iter()
+            .find(|field| field.name == name)
+            .ok_or_else(|| AlignedError::UnknownField(name.to_owned()))?;
+        if field.primitive != expected {
+            return Err(AlignedError::WrongDenseFieldType {
+                field: name.to_owned(),
+                expected,
+                actual: field.primitive,
+            });
+        }
+        Ok(field)
+    }
+
+    pub fn u8(&self, name: &str) -> Result<u8, AlignedError> {
+        let field = self.field(name, Primitive::U8)?;
+        Ok(self.bytes[field.offset])
+    }
+
+    pub fn u32(&self, name: &str) -> Result<u32, AlignedError> {
+        let field = self.field(name, Primitive::U32)?;
+        read_u32(self.bytes, field.offset)
+    }
+
+    pub fn i32(&self, name: &str) -> Result<i32, AlignedError> {
+        let field = self.field(name, Primitive::I32)?;
+        Ok(i32::from_le_bytes(read_array(self.bytes, field.offset)?))
+    }
+
+    pub fn u64(&self, name: &str) -> Result<u64, AlignedError> {
+        let field = self.field(name, Primitive::U64)?;
+        read_u64(self.bytes, field.offset)
+    }
+}
+
+impl<'a> DenseRange<'a> {
+    pub fn parse(
+        bytes: &'a [u8],
+        expected_root: SchemaId,
+        registry: &AlignedRegistry,
+    ) -> Result<Self, AlignedError> {
+        let layout = dense_layout(expected_root, registry)?;
+        if bytes.len() < DENSE_HEADER_SIZE {
+            return Err(AlignedError::Truncated {
+                needed: DENSE_HEADER_SIZE,
+                actual: bytes.len(),
+            });
+        }
+        if bytes[..8] != DENSE_MAGIC {
+            return Err(AlignedError::BadMagic);
+        }
+        let version = read_u16(bytes, 8)?;
+        if version != DENSE_VERSION {
+            return Err(AlignedError::UnsupportedVersion(version));
+        }
+        if bytes[10] != 1 {
+            return Err(AlignedError::WrongByteOrder(bytes[10]));
+        }
+        if read_u32(bytes, 12)? as usize != DENSE_HEADER_SIZE {
+            return Err(AlignedError::BadHeader);
+        }
+        let actual_root = SchemaId::from_raw(read_u64(bytes, 16)?);
+        if actual_root != expected_root {
+            return Err(AlignedError::WrongSchema {
+                expected: expected_root,
+                actual: actual_root,
+            });
+        }
+        let stride = read_u32(bytes, 24)? as usize;
+        let alignment = read_u32(bytes, 28)? as usize;
+        if stride != layout.stride || alignment != layout.alignment {
+            return Err(AlignedError::WrongDenseLayout {
+                expected_stride: layout.stride as u32,
+                actual_stride: stride as u32,
+                expected_alignment: layout.alignment as u32,
+                actual_alignment: alignment as u32,
+            });
+        }
+        let count = usize_from_u64(read_u64(bytes, 32)?)?;
+        let payload_offset = usize_from_u64(read_u64(bytes, 40)?)?;
+        let payload_len = usize_from_u64(read_u64(bytes, 48)?)?;
+        let file_len = usize_from_u64(read_u64(bytes, 56)?)?;
+        if file_len != bytes.len() {
+            return Err(AlignedError::Truncated {
+                needed: file_len,
+                actual: bytes.len(),
+            });
+        }
+        if !payload_offset.is_multiple_of(alignment) {
+            return Err(AlignedError::MisalignedReference {
+                offset: payload_offset as u64,
+                alignment,
+            });
+        }
+        let expected_len = count
+            .checked_mul(stride)
+            .ok_or(AlignedError::SizeOverflow)?;
+        if payload_len != expected_len {
+            return Err(AlignedError::InvalidDensePayload {
+                len: payload_len,
+                stride: stride as u32,
+            });
+        }
+        let payload_end = payload_offset
+            .checked_add(payload_len)
+            .ok_or(AlignedError::SizeOverflow)?;
+        let payload =
+            bytes
+                .get(payload_offset..payload_end)
+                .ok_or(AlignedError::ReferenceOutOfBounds {
+                    offset: payload_offset as u64,
+                    len: payload_len as u64,
+                    file_len: bytes.len(),
+                })?;
+        Ok(Self {
+            bytes,
+            payload,
+            count,
+            stride,
+            fields: layout.fields,
+        })
+    }
+
+    #[must_use]
+    pub const fn bytes(&self) -> &'a [u8] {
+        self.bytes
+    }
+
+    #[must_use]
+    pub const fn count(&self) -> usize {
+        self.count
+    }
+
+    #[must_use]
+    pub const fn stride(&self) -> usize {
+        self.stride
+    }
+
+    /// Borrow the validated fixed-stride row payload without the range header.
+    #[must_use]
+    pub const fn payload(&self) -> &'a [u8] {
+        self.payload
+    }
+
+    pub fn row(&self, index: usize) -> Result<&'a [u8], AlignedError> {
+        if index >= self.count {
+            return Err(AlignedError::IndexOutOfBounds {
+                index,
+                count: self.count,
+            });
+        }
+        let start = index
+            .checked_mul(self.stride)
+            .ok_or(AlignedError::SizeOverflow)?;
+        Ok(&self.payload[start..start + self.stride])
+    }
+
+    pub fn typed_row(&self, index: usize) -> Result<DenseRowRef<'_>, AlignedError> {
+        Ok(DenseRowRef {
+            bytes: self.row(index)?,
+            fields: &self.fields,
+        })
+    }
+}
+
+struct DenseLayout {
+    fields: Vec<DenseField>,
+    stride: usize,
+    alignment: usize,
+}
+
+struct DenseField {
+    name: String,
+    primitive: Primitive,
+    offset: usize,
+}
+
+fn dense_layout(root: SchemaId, registry: &AlignedRegistry) -> Result<DenseLayout, AlignedError> {
+    let list = registry
+        .composite(root)
+        .ok_or(AlignedError::UnknownSchema(root))?;
+    let (SchemaKind::List { element } | SchemaKind::Set { element }) = &list.kind else {
+        return Err(AlignedError::Unsupported(
+            "dense root must be a list or set",
+        ));
+    };
+    let row_id = match element {
+        SchemaRef::Concrete { id, args } if args.is_empty() => *id,
+        _ => return Err(AlignedError::Unsupported("dense row type parameters")),
+    };
+    let row = registry
+        .composite(row_id)
+        .ok_or(AlignedError::UnknownSchema(row_id))?;
+    let SchemaKind::Struct { fields, .. } = &row.kind else {
+        return Err(AlignedError::Unsupported("dense rows must be structs"));
+    };
+    let mut dense_fields = Vec::with_capacity(fields.len());
+    let mut offset = 0usize;
+    let mut alignment = 1usize;
+    for field in fields {
+        let primitive = match &field.schema {
+            SchemaRef::Concrete { id, args } if args.is_empty() => registry
+                .primitive(*id)
+                .ok_or(AlignedError::Unsupported("dense fields must be primitives"))?,
+            _ => return Err(AlignedError::Unsupported("dense field type parameters")),
+        };
+        let (size, field_alignment) = dense_primitive_layout(primitive)?;
+        offset = align_up(offset, field_alignment)?;
+        dense_fields.push(DenseField {
+            name: field.name.clone(),
+            primitive,
+            offset,
+        });
+        offset = offset.checked_add(size).ok_or(AlignedError::SizeOverflow)?;
+        alignment = alignment.max(field_alignment);
+    }
+    Ok(DenseLayout {
+        fields: dense_fields,
+        stride: align_up(offset, alignment)?,
+        alignment,
+    })
+}
+
+fn dense_primitive_layout(primitive: Primitive) -> Result<(usize, usize), AlignedError> {
+    Ok(match primitive {
+        Primitive::Bool | Primitive::U8 | Primitive::I8 => (1, 1),
+        Primitive::U16 | Primitive::I16 => (2, 2),
+        Primitive::U32 | Primitive::I32 | Primitive::F32 | Primitive::Char => (4, 4),
+        Primitive::U64 | Primitive::I64 | Primitive::F64 => (8, 8),
+        Primitive::U128 | Primitive::I128 => (16, 16),
+        _ => return Err(AlignedError::Unsupported("variable-width dense field")),
+    })
+}
+
+fn encode_dense_row(
+    value: &Value,
+    fields: &[DenseField],
+    out: &mut [u8],
+) -> Result<(), AlignedError> {
+    let object = value
+        .as_object()
+        .ok_or(AlignedError::TypeMismatch("dense row struct"))?;
+    for field in fields {
+        let value = object
+            .get(&field.name)
+            .ok_or(AlignedError::TypeMismatch("dense row field"))?;
+        encode_dense_primitive(value, field.primitive, &mut out[field.offset..])?;
+    }
+    Ok(())
+}
+
+fn encode_dense_primitive(
+    value: &Value,
+    primitive: Primitive,
+    out: &mut [u8],
+) -> Result<(), AlignedError> {
+    match primitive {
+        Primitive::Bool => {
+            out[0] = u8::from(value.as_bool().ok_or(AlignedError::TypeMismatch("bool"))?)
+        }
+        Primitive::U8 => {
+            out[0] = u8::try_from(
+                value
+                    .as_number()
+                    .and_then(|value| value.to_u128())
+                    .ok_or(AlignedError::TypeMismatch("u8"))?,
+            )
+            .map_err(|_| AlignedError::TypeMismatch("u8"))?
+        }
+        Primitive::U16 => out[..2].copy_from_slice(
+            &u16::try_from(
+                value
+                    .as_number()
+                    .and_then(|value| value.to_u128())
+                    .ok_or(AlignedError::TypeMismatch("u16"))?,
+            )
+            .map_err(|_| AlignedError::TypeMismatch("u16"))?
+            .to_le_bytes(),
+        ),
+        Primitive::U32 => out[..4].copy_from_slice(
+            &value
+                .as_number()
+                .and_then(|value| value.to_u32())
+                .ok_or(AlignedError::TypeMismatch("u32"))?
+                .to_le_bytes(),
+        ),
+        Primitive::U64 => out[..8].copy_from_slice(
+            &value
+                .as_number()
+                .and_then(|value| value.to_u64())
+                .ok_or(AlignedError::TypeMismatch("u64"))?
+                .to_le_bytes(),
+        ),
+        Primitive::U128 => out[..16].copy_from_slice(
+            &value
+                .as_number()
+                .and_then(|value| value.to_u128())
+                .ok_or(AlignedError::TypeMismatch("u128"))?
+                .to_le_bytes(),
+        ),
+        Primitive::I8 => {
+            out[0] = i8::try_from(
+                value
+                    .as_number()
+                    .and_then(|value| value.to_i128())
+                    .ok_or(AlignedError::TypeMismatch("i8"))?,
+            )
+            .map_err(|_| AlignedError::TypeMismatch("i8"))? as u8
+        }
+        Primitive::I16 => out[..2].copy_from_slice(
+            &i16::try_from(
+                value
+                    .as_number()
+                    .and_then(|value| value.to_i128())
+                    .ok_or(AlignedError::TypeMismatch("i16"))?,
+            )
+            .map_err(|_| AlignedError::TypeMismatch("i16"))?
+            .to_le_bytes(),
+        ),
+        Primitive::I32 => out[..4].copy_from_slice(
+            &value
+                .as_number()
+                .and_then(|value| value.to_i32())
+                .ok_or(AlignedError::TypeMismatch("i32"))?
+                .to_le_bytes(),
+        ),
+        Primitive::I64 => out[..8].copy_from_slice(
+            &value
+                .as_number()
+                .and_then(|value| value.to_i64())
+                .ok_or(AlignedError::TypeMismatch("i64"))?
+                .to_le_bytes(),
+        ),
+        Primitive::I128 => out[..16].copy_from_slice(
+            &value
+                .as_number()
+                .and_then(|value| value.to_i128())
+                .ok_or(AlignedError::TypeMismatch("i128"))?
+                .to_le_bytes(),
+        ),
+        Primitive::F32 => out[..4].copy_from_slice(
+            &(value
+                .as_number()
+                .and_then(|value| value.to_f64())
+                .ok_or(AlignedError::TypeMismatch("f32"))? as f32)
+                .to_bits()
+                .to_le_bytes(),
+        ),
+        Primitive::F64 => out[..8].copy_from_slice(
+            &value
+                .as_number()
+                .and_then(|value| value.to_f64())
+                .ok_or(AlignedError::TypeMismatch("f64"))?
+                .to_bits()
+                .to_le_bytes(),
+        ),
+        Primitive::Char => out[..4].copy_from_slice(
+            &(value.as_char().ok_or(AlignedError::TypeMismatch("char"))? as u32).to_le_bytes(),
+        ),
+        _ => return Err(AlignedError::Unsupported("variable-width dense field")),
+    }
+    Ok(())
+}
+
 struct Encoder<'a> {
     bytes: Vec<u8>,
     registry: &'a AlignedRegistry,
@@ -1078,12 +1510,35 @@ pub enum AlignedError {
     },
     UnknownVariant(u32),
     UnknownField(String),
+    WrongDenseFieldType {
+        field: String,
+        expected: Primitive,
+        actual: Primitive,
+    },
     IndexOutOfBounds {
         index: usize,
         count: usize,
     },
     InvalidUtf8,
     InvalidChar,
+    InvalidDenseLayout {
+        stride: u32,
+        alignment: u32,
+    },
+    WrongDenseLayout {
+        expected_stride: u32,
+        actual_stride: u32,
+        expected_alignment: u32,
+        actual_alignment: u32,
+    },
+    WrongDenseCount {
+        expected: usize,
+        actual: usize,
+    },
+    InvalidDensePayload {
+        len: usize,
+        stride: u32,
+    },
 }
 
 impl AlignedError {
@@ -1104,3 +1559,173 @@ impl fmt::Display for AlignedError {
     }
 }
 impl std::error::Error for AlignedError {}
+#[cfg(test)]
+mod dense_range_tests {
+    use super::*;
+    use phon_schema::{Field, Schema, SchemaKind, SchemaRef, primitive_id, resolve_ids};
+
+    fn row_registry() -> (AlignedRegistry, SchemaId) {
+        let row = Schema {
+            id: SchemaId::from_raw(1),
+            type_params: Vec::new(),
+            kind: SchemaKind::Struct {
+                name: "DenseRow".into(),
+                fields: vec![
+                    Field {
+                        name: "left".into(),
+                        schema: SchemaRef::concrete(primitive_id(Primitive::U32)),
+                        required: true,
+                    },
+                    Field {
+                        name: "right".into(),
+                        schema: SchemaRef::concrete(primitive_id(Primitive::U32)),
+                        required: true,
+                    },
+                ],
+            },
+        };
+        let list = Schema {
+            id: SchemaId::from_raw(2),
+            type_params: Vec::new(),
+            kind: SchemaKind::List {
+                element: SchemaRef::concrete(row.id),
+            },
+        };
+        let schemas = resolve_ids(vec![row, list]);
+        let root = schemas[1].id;
+        (AlignedRegistry::new(schemas), root)
+    }
+
+    fn rows() -> Value {
+        let mut rows = VArray::new();
+        for (left, right) in [(1u32, 2u32), (3, 4)] {
+            let mut row = VObject::new();
+            row.insert(VString::new("left"), Value::from(left));
+            row.insert(VString::new("right"), Value::from(right));
+            rows.push(row);
+        }
+        rows.into()
+    }
+
+    #[test]
+    fn dense_rows_are_borrowed_with_schema_derived_layout() {
+        let (registry, root) = row_registry();
+        let bytes = DenseRangeWriter::encode(&rows(), root, &registry).expect("encode");
+        let range = DenseRange::parse(&bytes, root, &registry).expect("parse");
+        assert_eq!(range.count(), 2);
+        assert_eq!(range.stride(), 8);
+        assert_eq!(range.row(0).expect("row 0"), &[1, 0, 0, 0, 2, 0, 0, 0]);
+        assert_eq!(range.row(1).expect("row 1"), &[3, 0, 0, 0, 4, 0, 0, 0]);
+        assert_eq!(range.bytes().as_ptr(), bytes.as_ptr());
+    }
+
+    #[test]
+    fn dense_row_reads_named_typed_fields_with_padding() {
+        let row = Schema {
+            id: SchemaId::from_raw(10),
+            type_params: Vec::new(),
+            kind: SchemaKind::Struct {
+                name: "PaddedRow".into(),
+                fields: vec![
+                    Field {
+                        name: "tag".into(),
+                        schema: SchemaRef::concrete(primitive_id(Primitive::U8)),
+                        required: true,
+                    },
+                    Field {
+                        name: "value".into(),
+                        schema: SchemaRef::concrete(primitive_id(Primitive::U32)),
+                        required: true,
+                    },
+                ],
+            },
+        };
+        let list = Schema {
+            id: SchemaId::from_raw(11),
+            type_params: Vec::new(),
+            kind: SchemaKind::List {
+                element: SchemaRef::concrete(row.id),
+            },
+        };
+        let schemas = resolve_ids(vec![row, list]);
+        let root = schemas[1].id;
+        let registry = AlignedRegistry::new(schemas);
+        let mut object = VObject::new();
+        object.insert(VString::new("tag"), Value::from(7u8));
+        object.insert(VString::new("value"), Value::from(0x1234_5678u32));
+        let bytes = DenseRangeWriter::encode(&VArray::from_iter([object]).into(), root, &registry)
+            .expect("encode");
+        let range = DenseRange::parse(&bytes, root, &registry).expect("parse");
+        let row = range.typed_row(0).expect("row");
+        assert_eq!(row.u8("tag").expect("tag"), 7);
+        assert_eq!(row.u32("value").expect("value"), 0x1234_5678);
+        assert!(matches!(
+            row.u32("tag"),
+            Err(AlignedError::WrongDenseFieldType { .. })
+        ));
+    }
+
+    #[test]
+    fn dense_rows_reject_schema_layout_and_count_mismatch() {
+        let (registry, root) = row_registry();
+        let bytes = DenseRangeWriter::encode(&rows(), root, &registry).expect("encode");
+        let one_field = Schema {
+            id: SchemaId::from_raw(3),
+            type_params: Vec::new(),
+            kind: SchemaKind::Struct {
+                name: "OneField".into(),
+                fields: vec![Field {
+                    name: "value".into(),
+                    schema: SchemaRef::concrete(primitive_id(Primitive::U32)),
+                    required: true,
+                }],
+            },
+        };
+        let one_field_list = Schema {
+            id: SchemaId::from_raw(4),
+            type_params: Vec::new(),
+            kind: SchemaKind::List {
+                element: SchemaRef::concrete(one_field.id),
+            },
+        };
+        let schemas = resolve_ids(vec![one_field, one_field_list]);
+        let wrong_root = schemas[1].id;
+        let wrong_registry = AlignedRegistry::new(schemas);
+        assert!(matches!(
+            DenseRange::parse(&bytes, wrong_root, &wrong_registry),
+            Err(AlignedError::WrongSchema { .. })
+        ));
+        let mut wrong_count = bytes.clone();
+        wrong_count[32..40].copy_from_slice(&3u64.to_le_bytes());
+        assert!(matches!(
+            DenseRange::parse(&wrong_count, root, &registry),
+            Err(AlignedError::InvalidDensePayload { .. })
+                | Err(AlignedError::ReferenceOutOfBounds { .. })
+                | Err(AlignedError::Truncated { .. })
+        ));
+        let mut bad_magic = bytes.clone();
+        bad_magic[0] ^= 0xff;
+        assert!(matches!(
+            DenseRange::parse(&bad_magic, root, &registry),
+            Err(AlignedError::BadMagic)
+        ));
+        let mut bad_version = bytes.clone();
+        bad_version[8..10].copy_from_slice(&u16::MAX.to_le_bytes());
+        assert!(matches!(
+            DenseRange::parse(&bad_version, root, &registry),
+            Err(AlignedError::UnsupportedVersion(u16::MAX))
+        ));
+        let mut misaligned = bytes.clone();
+        misaligned[40..48].copy_from_slice(&65u64.to_le_bytes());
+        assert!(matches!(
+            DenseRange::parse(&misaligned, root, &registry),
+            Err(AlignedError::MisalignedReference { .. })
+        ));
+        let mut truncated = bytes;
+        truncated.pop();
+        assert!(matches!(
+            DenseRange::parse(&truncated, root, &registry),
+            Err(AlignedError::Truncated { .. })
+        ));
+    }
+}
