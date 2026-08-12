@@ -275,6 +275,11 @@ impl<'a> DenseRange<'a> {
         self.stride
     }
 
+    /// Borrow the validated fixed-stride row payload without the range header.
+    #[must_use]
+    pub const fn payload(&self) -> &'a [u8] {
+        self.payload
+    }
     pub fn row(&self, index: usize) -> Result<&'a [u8], AlignedError> {
         if index >= self.count {
             return Err(AlignedError::IndexOutOfBounds {
@@ -1696,6 +1701,24 @@ mod dense_range_tests {
             Err(AlignedError::InvalidDensePayload { .. })
                 | Err(AlignedError::ReferenceOutOfBounds { .. })
                 | Err(AlignedError::Truncated { .. })
+        ));
+        let mut bad_magic = bytes.clone();
+        bad_magic[0] ^= 0xff;
+        assert!(matches!(
+            DenseRange::parse(&bad_magic, root, &registry),
+            Err(AlignedError::BadMagic)
+        ));
+        let mut bad_version = bytes.clone();
+        bad_version[8..10].copy_from_slice(&u16::MAX.to_le_bytes());
+        assert!(matches!(
+            DenseRange::parse(&bad_version, root, &registry),
+            Err(AlignedError::UnsupportedVersion(u16::MAX))
+        ));
+        let mut misaligned = bytes.clone();
+        misaligned[40..48].copy_from_slice(&65u64.to_le_bytes());
+        assert!(matches!(
+            DenseRange::parse(&misaligned, root, &registry),
+            Err(AlignedError::MisalignedReference { .. })
         ));
         let mut truncated = bytes;
         truncated.pop();
