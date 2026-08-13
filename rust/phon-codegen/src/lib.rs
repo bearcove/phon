@@ -24,7 +24,7 @@ pub use source::{Builder, Module, Root};
 mod tests {
     use super::*;
     use facet::Facet;
-    use phon_schema::{schema_from_bytes, schema_to_bytes};
+    use phon_schema::{DecodeLimits, schema_from_bytes, schema_to_bytes};
 
     #[derive(Facet)]
     struct Point {
@@ -64,7 +64,8 @@ mod tests {
         assert!(!m.schemas.is_empty());
         for s in &m.schemas {
             let bytes = schema_to_bytes(s);
-            let back = schema_from_bytes(&bytes).expect("schema round-trips");
+            let (back, _) =
+                schema_from_bytes(&bytes, DecodeLimits::DEFAULT).expect("schema round-trips");
             assert_eq!(&back, s, "schema {:#x} must round-trip", s.id.as_u64());
         }
     }

@@ -32,7 +32,7 @@ pub use schema::{
     VariantPayload,
 };
 pub use selfdescribing::{
-    EncodeError, extended_from_string, extended_to_string, read_value, schema_from_bytes,
-    schema_to_bytes, value_from_bytes, value_to_bytes, write_value,
+    DecodeLimits, EncodeError, extended_from_string, extended_to_string, read_value,
+    schema_from_bytes, schema_to_bytes, value_from_bytes, value_to_bytes, write_value,
 };
 pub use value::Value;
