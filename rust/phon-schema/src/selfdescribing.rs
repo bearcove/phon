@@ -87,6 +87,48 @@ pub fn schema_to_bytes(schema: &Schema) -> Vec<u8> {
     out
 }
 
+/// Compare a schema's canonical self-describing encoding with existing bytes
+/// without allocating an encoded copy.
+#[must_use]
+pub fn schema_matches_bytes(schema: &Schema, bytes: &[u8]) -> bool {
+    let mut comparison = ComparisonSink::new(bytes);
+    enc_schema(&mut comparison, schema);
+    comparison.matches()
+}
+
+struct ComparisonSink<'a> {
+    expected: &'a [u8],
+    consumed: usize,
+    equal: bool,
+}
+
+impl<'a> ComparisonSink<'a> {
+    const fn new(expected: &'a [u8]) -> Self {
+        Self {
+            expected,
+            consumed: 0,
+            equal: true,
+        }
+    }
+
+    fn matches(&self) -> bool {
+        self.equal && self.consumed == self.expected.len()
+    }
+}
+
+impl Sink for ComparisonSink<'_> {
+    fn put(&mut self, bytes: &[u8]) {
+        let Some(end) = self.consumed.checked_add(bytes.len()) else {
+            self.equal = false;
+            return;
+        };
+        if self.equal && self.expected.get(self.consumed..end) != Some(bytes) {
+            self.equal = false;
+        }
+        self.consumed = end;
+    }
+}
+
 /// Caller-selected allocation ceiling for one decoded schema.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DecodeLimits {
@@ -1505,6 +1547,20 @@ mod tests {
                 .0,
             schema
         );
+    }
+
+    #[test]
+    fn canonical_schema_comparison_uses_exact_encoded_bytes() {
+        let schema = Schema {
+            id: SchemaId::from_raw(1),
+            type_params: Vec::new(),
+            kind: SchemaKind::Dynamic,
+        };
+        let mut bytes = schema_to_bytes(&schema);
+        assert!(schema_matches_bytes(&schema, &bytes));
+        bytes[19..21].copy_from_slice(b"xx");
+        assert!(!schema_matches_bytes(&schema, &bytes));
+        assert!(!schema_matches_bytes(&schema, &bytes[..bytes.len() - 1]));
     }
 
     #[test]
