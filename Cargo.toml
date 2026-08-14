@@ -21,10 +21,10 @@ homepage = "https://github.com/bearcove/phon"
 
 [workspace.dependencies]
 blake3 = { version = "1", default-features = false }
-copypatch = { git = "https://github.com/bearcove/weavy", rev = "743a7abe8f999ab4122df1cc02e2441849210a23" }
-facet = { git = "https://github.com/facet-rs/facet", rev = "5705fa6c51289bea49f5729c52dc5e23cedce4f8" }
-facet-json = { git = "https://github.com/facet-rs/facet", rev = "5705fa6c51289bea49f5729c52dc5e23cedce4f8" }
-facet-value = { git = "https://github.com/facet-rs/facet", rev = "5705fa6c51289bea49f5729c52dc5e23cedce4f8" }
+copypatch = { git = "https://github.com/bearcove/weavy", rev = "cc6ef2587a30cf3206d9e5a632b782f3b16d7fc5" }
+facet = { git = "https://github.com/facet-rs/facet", rev = "43e100aa2287cf7f054219add5612c40e551d48e" }
+facet-json = { git = "https://github.com/facet-rs/facet", rev = "43e100aa2287cf7f054219add5612c40e551d48e" }
+facet-value = { git = "https://github.com/facet-rs/facet", rev = "43e100aa2287cf7f054219add5612c40e551d48e" }
 phon = { path = "rust/phon", version = "0.2.0-rc.5" }
 phon-codegen = { path = "rust/phon-codegen", version = "0.2.0-rc.5" }
 phon-conformance = { path = "rust/phon-conformance", version = "0.2.0-rc.5" }
@@ -33,16 +33,12 @@ phon-ir = { path = "rust/phon-ir", version = "0.2.0-rc.5" }
 phon-jit = { path = "rust/phon-jit", version = "0.2.0-rc.5" }
 phon-storage = { path = "rust/phon-storage", version = "0.2.0-rc.5" }
 phon-schema = { path = "rust/phon-schema", version = "0.2.0-rc.5" }
-taxon = { git = "https://github.com/bearcove/weavy", rev = "743a7abe8f999ab4122df1cc02e2441849210a23" }
-weavy = { git = "https://github.com/bearcove/weavy", rev = "743a7abe8f999ab4122df1cc02e2441849210a23" }
+taxon = { git = "https://github.com/bearcove/weavy", rev = "cc6ef2587a30cf3206d9e5a632b782f3b16d7fc5" }
+weavy = { git = "https://github.com/bearcove/weavy", rev = "cc6ef2587a30cf3206d9e5a632b782f3b16d7fc5" }
 proptest = "1"
 tracing = { version = "0.1.43", default-features = false, features = ["std", "attributes"] }
 tracing-subscriber = { version = "0.3.22", default-features = false, features = ["fmt", "std", "env-filter"] }
 
-[patch.crates-io]
-copypatch = { git = "https://github.com/bearcove/weavy", rev = "743a7abe8f999ab4122df1cc02e2441849210a23" }
-taxon = { git = "https://github.com/bearcove/weavy", rev = "743a7abe8f999ab4122df1cc02e2441849210a23" }
-weavy = { git = "https://github.com/bearcove/weavy", rev = "743a7abe8f999ab4122df1cc02e2441849210a23" }
 
 [workspace.lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(facet_no_doc)", "cfg(kani)"] }
