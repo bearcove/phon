@@ -107,7 +107,7 @@ checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
 [[package]]
 name = "copypatch"
 version = "0.2.0-rc.4"
-source = "git+https://github.com/bearcove/weavy?rev=cc6ef2587a30cf3206d9e5a632b782f3b16d7fc5#cc6ef2587a30cf3206d9e5a632b782f3b16d7fc5"
+source = "git+https://github.com/bearcove/weavy?rev=ca49bde0aa8e105da661edf6dd09f7013fe86aaf#ca49bde0aa8e105da661edf6dd09f7013fe86aaf"
 dependencies = [
  "libc",
  "object",
@@ -150,10 +150,10 @@ dependencies = [
 [[package]]
 name = "facet"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e#43e100aa2287cf7f054219add5612c40e551d48e"
+source = "git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813#84c07e6defd0c2fc46d7772e2aaa191143edd813"
 dependencies = [
  "autocfg",
- "facet-core 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e)",
+ "facet-core 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
  "facet-macros",
 ]
 
@@ -172,13 +172,13 @@ dependencies = [
 [[package]]
 name = "facet-core"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=5705fa6c51289bea49f5729c52dc5e23cedce4f8#5705fa6c51289bea49f5729c52dc5e23cedce4f8"
+source = "git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813#84c07e6defd0c2fc46d7772e2aaa191143edd813"
 dependencies = [
  "autocfg",
  "const-fnv1a-hash",
  "iddqd",
  "impls",
- "taxon 0.2.0-rc.5 (git+https://github.com/bearcove/weavy?rev=743a7abe8f999ab4122df1cc02e2441849210a23)",
+ "taxon 0.2.0-rc.5 (git+https://github.com/bearcove/weavy?rev=ca49bde0aa8e105da661edf6dd09f7013fe86aaf)",
 ]
 
 [[package]]
@@ -193,10 +193,10 @@ dependencies = [
 [[package]]
 name = "facet-dessert"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=5705fa6c51289bea49f5729c52dc5e23cedce4f8#5705fa6c51289bea49f5729c52dc5e23cedce4f8"
+source = "git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813#84c07e6defd0c2fc46d7772e2aaa191143edd813"
 dependencies = [
- "facet-core 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=5705fa6c51289bea49f5729c52dc5e23cedce4f8)",
- "facet-reflect 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=5705fa6c51289bea49f5729c52dc5e23cedce4f8)",
+ "facet-core 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
+ "facet-reflect 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
 ]
 
 [[package]]
@@ -214,32 +214,32 @@ dependencies = [
 [[package]]
 name = "facet-format"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=5705fa6c51289bea49f5729c52dc5e23cedce4f8#5705fa6c51289bea49f5729c52dc5e23cedce4f8"
+source = "git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813#84c07e6defd0c2fc46d7772e2aaa191143edd813"
 dependencies = [
- "facet-core 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=5705fa6c51289bea49f5729c52dc5e23cedce4f8)",
- "facet-dessert 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=5705fa6c51289bea49f5729c52dc5e23cedce4f8)",
- "facet-path 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=5705fa6c51289bea49f5729c52dc5e23cedce4f8)",
- "facet-reflect 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=5705fa6c51289bea49f5729c52dc5e23cedce4f8)",
- "facet-solver 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=5705fa6c51289bea49f5729c52dc5e23cedce4f8)",
+ "facet-core 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
+ "facet-dessert 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
+ "facet-path 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
+ "facet-reflect 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
+ "facet-solver 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
 ]
 
 [[package]]
 name = "facet-json"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e#43e100aa2287cf7f054219add5612c40e551d48e"
+source = "git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813#84c07e6defd0c2fc46d7772e2aaa191143edd813"
 dependencies = [
  "copypatch",
  "facet",
- "facet-core 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e)",
- "facet-format 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e)",
- "facet-reflect 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e)",
+ "facet-core 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
+ "facet-format 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
+ "facet-reflect 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
  "weavy",
 ]
 
 [[package]]
 name = "facet-macro-parse"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e#43e100aa2287cf7f054219add5612c40e551d48e"
+source = "git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813#84c07e6defd0c2fc46d7772e2aaa191143edd813"
 dependencies = [
  "facet-macro-types",
  "proc-macro2",
@@ -249,7 +249,7 @@ dependencies = [
 [[package]]
 name = "facet-macro-types"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e#43e100aa2287cf7f054219add5612c40e551d48e"
+source = "git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813#84c07e6defd0c2fc46d7772e2aaa191143edd813"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -259,7 +259,7 @@ dependencies = [
 [[package]]
 name = "facet-macros"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e#43e100aa2287cf7f054219add5612c40e551d48e"
+source = "git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813#84c07e6defd0c2fc46d7772e2aaa191143edd813"
 dependencies = [
  "facet-macros-impl",
 ]
@@ -267,7 +267,7 @@ dependencies = [
 [[package]]
 name = "facet-macros-impl"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e#43e100aa2287cf7f054219add5612c40e551d48e"
+source = "git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813#84c07e6defd0c2fc46d7772e2aaa191143edd813"
 dependencies = [
  "facet-macro-parse",
  "facet-macro-types",
@@ -288,9 +288,9 @@ dependencies = [
 [[package]]
 name = "facet-path"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=5705fa6c51289bea49f5729c52dc5e23cedce4f8#5705fa6c51289bea49f5729c52dc5e23cedce4f8"
+source = "git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813#84c07e6defd0c2fc46d7772e2aaa191143edd813"
 dependencies = [
- "facet-core 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=5705fa6c51289bea49f5729c52dc5e23cedce4f8)",
+ "facet-core 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
 ]
 
 [[package]]
@@ -307,10 +307,10 @@ dependencies = [
 [[package]]
 name = "facet-reflect"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=5705fa6c51289bea49f5729c52dc5e23cedce4f8#5705fa6c51289bea49f5729c52dc5e23cedce4f8"
+source = "git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813#84c07e6defd0c2fc46d7772e2aaa191143edd813"
 dependencies = [
- "facet-core 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=5705fa6c51289bea49f5729c52dc5e23cedce4f8)",
- "facet-path 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=5705fa6c51289bea49f5729c52dc5e23cedce4f8)",
+ "facet-core 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
+ "facet-path 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
  "hashbrown",
  "smallvec",
 ]
@@ -328,10 +328,10 @@ dependencies = [
 [[package]]
 name = "facet-solver"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=5705fa6c51289bea49f5729c52dc5e23cedce4f8#5705fa6c51289bea49f5729c52dc5e23cedce4f8"
+source = "git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813#84c07e6defd0c2fc46d7772e2aaa191143edd813"
 dependencies = [
- "facet-core 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=5705fa6c51289bea49f5729c52dc5e23cedce4f8)",
- "facet-reflect 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=5705fa6c51289bea49f5729c52dc5e23cedce4f8)",
+ "facet-core 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
+ "facet-reflect 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
  "strsim",
 ]
 
@@ -349,11 +349,11 @@ dependencies = [
 [[package]]
 name = "facet-value"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=5705fa6c51289bea49f5729c52dc5e23cedce4f8#5705fa6c51289bea49f5729c52dc5e23cedce4f8"
+source = "git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813#84c07e6defd0c2fc46d7772e2aaa191143edd813"
 dependencies = [
- "facet-core 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=5705fa6c51289bea49f5729c52dc5e23cedce4f8)",
- "facet-format 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=5705fa6c51289bea49f5729c52dc5e23cedce4f8)",
- "facet-reflect 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=5705fa6c51289bea49f5729c52dc5e23cedce4f8)",
+ "facet-core 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
+ "facet-format 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
+ "facet-reflect 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
  "indexmap",
 ]
 
@@ -542,7 +542,7 @@ name = "phon"
 version = "0.2.0-rc.5"
 dependencies = [
  "facet",
- "facet-value 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e)",
+ "facet-value 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
  "phon-engine",
  "phon-ir",
  "phon-jit",
@@ -564,7 +564,7 @@ version = "0.2.0-rc.5"
 dependencies = [
  "facet",
  "facet-json",
- "facet-value 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e)",
+ "facet-value 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
  "phon-engine",
  "phon-schema 0.2.0-rc.5",
  "tracing",
@@ -575,7 +575,7 @@ dependencies = [
 name = "phon-engine"
 version = "0.2.0-rc.5"
 dependencies = [
- "facet-value 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e)",
+ "facet-value 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
  "phon-ir",
  "phon-schema 0.2.0-rc.5",
  "phon-storage",
@@ -606,18 +606,18 @@ name = "phon-schema"
 version = "0.2.0-rc.5"
 dependencies = [
  "blake3",
- "facet-value 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e)",
- "taxon 0.2.0-rc.5 (git+https://github.com/bearcove/weavy?rev=cc6ef2587a30cf3206d9e5a632b782f3b16d7fc5)",
+ "facet-value 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
+ "taxon 0.2.0-rc.5 (git+https://github.com/bearcove/weavy?rev=ca49bde0aa8e105da661edf6dd09f7013fe86aaf)",
 ]
 
 [[package]]
 name = "phon-schema"
 version = "0.2.0-rc.5"
-source = "git+https://github.com/bearcove/phon?rev=3c19df3#3c19df38aed9e81f0172ad0cf41e781f18b3ffb2"
+source = "git+https://github.com/bearcove/phon?rev=c25a3776a093323193236bc00bed4c5ae1a0af93#c25a3776a093323193236bc00bed4c5ae1a0af93"
 dependencies = [
  "blake3",
- "facet-value 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=5705fa6c51289bea49f5729c52dc5e23cedce4f8)",
- "taxon 0.2.0-rc.5 (git+https://github.com/bearcove/weavy?rev=743a7abe8f999ab4122df1cc02e2441849210a23)",
+ "facet-value 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e)",
+ "taxon 0.2.0-rc.5 (git+https://github.com/bearcove/weavy?rev=cc6ef2587a30cf3206d9e5a632b782f3b16d7fc5)",
 ]
 
 [[package]]
@@ -625,7 +625,7 @@ name = "phon-storage"
 version = "0.2.0-rc.5"
 dependencies = [
  "blake3",
- "facet-value 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e)",
+ "facet-value 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
  "memmap2",
  "phon-schema 0.2.0-rc.5",
 ]
@@ -842,7 +842,7 @@ dependencies = [
 [[package]]
 name = "taxon"
 version = "0.2.0-rc.5"
-source = "git+https://github.com/bearcove/weavy?rev=743a7abe8f999ab4122df1cc02e2441849210a23#743a7abe8f999ab4122df1cc02e2441849210a23"
+source = "git+https://github.com/bearcove/weavy?rev=ca49bde0aa8e105da661edf6dd09f7013fe86aaf#ca49bde0aa8e105da661edf6dd09f7013fe86aaf"
 dependencies = [
  "blake3",
 ]
@@ -973,11 +973,11 @@ dependencies = [
 [[package]]
 name = "weavy"
 version = "0.2.2"
-source = "git+https://github.com/bearcove/weavy?rev=cc6ef2587a30cf3206d9e5a632b782f3b16d7fc5#cc6ef2587a30cf3206d9e5a632b782f3b16d7fc5"
+source = "git+https://github.com/bearcove/weavy?rev=ca49bde0aa8e105da661edf6dd09f7013fe86aaf#ca49bde0aa8e105da661edf6dd09f7013fe86aaf"
 dependencies = [
  "blake3",
  "copypatch",
- "phon-schema 0.2.0-rc.5 (git+https://github.com/bearcove/phon?rev=3c19df3)",
+ "phon-schema 0.2.0-rc.5 (git+https://github.com/bearcove/phon?rev=c25a3776a093323193236bc00bed4c5ae1a0af93)",
 ]
 
 [[package]]
