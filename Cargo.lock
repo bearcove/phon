@@ -107,7 +107,7 @@ checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
 [[package]]
 name = "copypatch"
 version = "0.2.0-rc.4"
-source = "git+https://github.com/bearcove/weavy?rev=ca49bde0aa8e105da661edf6dd09f7013fe86aaf#ca49bde0aa8e105da661edf6dd09f7013fe86aaf"
+source = "git+https://github.com/bearcove/weavy?branch=deps%2Falign-phon-for-dibs#fa427909fcc450db623d23446b2d2254535339c1"
 dependencies = [
  "libc",
  "object",
@@ -150,96 +150,63 @@ dependencies = [
 [[package]]
 name = "facet"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813#84c07e6defd0c2fc46d7772e2aaa191143edd813"
+source = "git+https://github.com/facet-rs/facet?branch=deps%2Falign-weavy-for-dibs#4843e22dddab40af6c6ba705144b5fbfcea28319"
 dependencies = [
  "autocfg",
- "facet-core 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
+ "facet-core",
  "facet-macros",
 ]
 
 [[package]]
 name = "facet-core"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e#43e100aa2287cf7f054219add5612c40e551d48e"
+source = "git+https://github.com/facet-rs/facet?branch=deps%2Falign-weavy-for-dibs#4843e22dddab40af6c6ba705144b5fbfcea28319"
 dependencies = [
  "autocfg",
  "const-fnv1a-hash",
  "iddqd",
  "impls",
- "taxon 0.2.0-rc.5 (git+https://github.com/bearcove/weavy?rev=cc6ef2587a30cf3206d9e5a632b782f3b16d7fc5)",
-]
-
-[[package]]
-name = "facet-core"
-version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813#84c07e6defd0c2fc46d7772e2aaa191143edd813"
-dependencies = [
- "autocfg",
- "const-fnv1a-hash",
- "iddqd",
- "impls",
- "taxon 0.2.0-rc.5 (git+https://github.com/bearcove/weavy?rev=ca49bde0aa8e105da661edf6dd09f7013fe86aaf)",
+ "taxon",
 ]
 
 [[package]]
 name = "facet-dessert"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e#43e100aa2287cf7f054219add5612c40e551d48e"
+source = "git+https://github.com/facet-rs/facet?branch=deps%2Falign-weavy-for-dibs#4843e22dddab40af6c6ba705144b5fbfcea28319"
 dependencies = [
- "facet-core 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e)",
- "facet-reflect 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e)",
-]
-
-[[package]]
-name = "facet-dessert"
-version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813#84c07e6defd0c2fc46d7772e2aaa191143edd813"
-dependencies = [
- "facet-core 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
- "facet-reflect 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
+ "facet-core",
+ "facet-reflect",
 ]
 
 [[package]]
 name = "facet-format"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e#43e100aa2287cf7f054219add5612c40e551d48e"
+source = "git+https://github.com/facet-rs/facet?branch=deps%2Falign-weavy-for-dibs#4843e22dddab40af6c6ba705144b5fbfcea28319"
 dependencies = [
- "facet-core 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e)",
- "facet-dessert 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e)",
- "facet-path 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e)",
- "facet-reflect 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e)",
- "facet-solver 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e)",
-]
-
-[[package]]
-name = "facet-format"
-version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813#84c07e6defd0c2fc46d7772e2aaa191143edd813"
-dependencies = [
- "facet-core 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
- "facet-dessert 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
- "facet-path 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
- "facet-reflect 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
- "facet-solver 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
+ "facet-core",
+ "facet-dessert",
+ "facet-path",
+ "facet-reflect",
+ "facet-solver",
 ]
 
 [[package]]
 name = "facet-json"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813#84c07e6defd0c2fc46d7772e2aaa191143edd813"
+source = "git+https://github.com/facet-rs/facet?branch=deps%2Falign-weavy-for-dibs#4843e22dddab40af6c6ba705144b5fbfcea28319"
 dependencies = [
  "copypatch",
  "facet",
- "facet-core 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
- "facet-format 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
- "facet-reflect 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
+ "facet-core",
+ "facet-format",
+ "facet-reflect",
  "weavy",
 ]
 
 [[package]]
 name = "facet-macro-parse"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813#84c07e6defd0c2fc46d7772e2aaa191143edd813"
+source = "git+https://github.com/facet-rs/facet?branch=deps%2Falign-weavy-for-dibs#4843e22dddab40af6c6ba705144b5fbfcea28319"
 dependencies = [
  "facet-macro-types",
  "proc-macro2",
@@ -249,7 +216,7 @@ dependencies = [
 [[package]]
 name = "facet-macro-types"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813#84c07e6defd0c2fc46d7772e2aaa191143edd813"
+source = "git+https://github.com/facet-rs/facet?branch=deps%2Falign-weavy-for-dibs#4843e22dddab40af6c6ba705144b5fbfcea28319"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -259,7 +226,7 @@ dependencies = [
 [[package]]
 name = "facet-macros"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813#84c07e6defd0c2fc46d7772e2aaa191143edd813"
+source = "git+https://github.com/facet-rs/facet?branch=deps%2Falign-weavy-for-dibs#4843e22dddab40af6c6ba705144b5fbfcea28319"
 dependencies = [
  "facet-macros-impl",
 ]
@@ -267,7 +234,7 @@ dependencies = [
 [[package]]
 name = "facet-macros-impl"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813#84c07e6defd0c2fc46d7772e2aaa191143edd813"
+source = "git+https://github.com/facet-rs/facet?branch=deps%2Falign-weavy-for-dibs#4843e22dddab40af6c6ba705144b5fbfcea28319"
 dependencies = [
  "facet-macro-parse",
  "facet-macro-types",
@@ -280,37 +247,18 @@ dependencies = [
 [[package]]
 name = "facet-path"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e#43e100aa2287cf7f054219add5612c40e551d48e"
+source = "git+https://github.com/facet-rs/facet?branch=deps%2Falign-weavy-for-dibs#4843e22dddab40af6c6ba705144b5fbfcea28319"
 dependencies = [
- "facet-core 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e)",
-]
-
-[[package]]
-name = "facet-path"
-version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813#84c07e6defd0c2fc46d7772e2aaa191143edd813"
-dependencies = [
- "facet-core 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
+ "facet-core",
 ]
 
 [[package]]
 name = "facet-reflect"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e#43e100aa2287cf7f054219add5612c40e551d48e"
+source = "git+https://github.com/facet-rs/facet?branch=deps%2Falign-weavy-for-dibs#4843e22dddab40af6c6ba705144b5fbfcea28319"
 dependencies = [
- "facet-core 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e)",
- "facet-path 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e)",
- "hashbrown",
- "smallvec",
-]
-
-[[package]]
-name = "facet-reflect"
-version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813#84c07e6defd0c2fc46d7772e2aaa191143edd813"
-dependencies = [
- "facet-core 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
- "facet-path 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
+ "facet-core",
+ "facet-path",
  "hashbrown",
  "smallvec",
 ]
@@ -318,42 +266,21 @@ dependencies = [
 [[package]]
 name = "facet-solver"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e#43e100aa2287cf7f054219add5612c40e551d48e"
+source = "git+https://github.com/facet-rs/facet?branch=deps%2Falign-weavy-for-dibs#4843e22dddab40af6c6ba705144b5fbfcea28319"
 dependencies = [
- "facet-core 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e)",
- "facet-reflect 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e)",
- "strsim",
-]
-
-[[package]]
-name = "facet-solver"
-version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813#84c07e6defd0c2fc46d7772e2aaa191143edd813"
-dependencies = [
- "facet-core 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
- "facet-reflect 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
+ "facet-core",
+ "facet-reflect",
  "strsim",
 ]
 
 [[package]]
 name = "facet-value"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e#43e100aa2287cf7f054219add5612c40e551d48e"
+source = "git+https://github.com/facet-rs/facet?branch=deps%2Falign-weavy-for-dibs#4843e22dddab40af6c6ba705144b5fbfcea28319"
 dependencies = [
- "facet-core 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e)",
- "facet-format 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e)",
- "facet-reflect 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e)",
- "indexmap",
-]
-
-[[package]]
-name = "facet-value"
-version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813#84c07e6defd0c2fc46d7772e2aaa191143edd813"
-dependencies = [
- "facet-core 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
- "facet-format 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
- "facet-reflect 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
+ "facet-core",
+ "facet-format",
+ "facet-reflect",
  "indexmap",
 ]
 
@@ -542,7 +469,7 @@ name = "phon"
 version = "0.2.0-rc.5"
 dependencies = [
  "facet",
- "facet-value 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
+ "facet-value",
  "phon-engine",
  "phon-ir",
  "phon-jit",
@@ -564,7 +491,7 @@ version = "0.2.0-rc.5"
 dependencies = [
  "facet",
  "facet-json",
- "facet-value 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
+ "facet-value",
  "phon-engine",
  "phon-schema 0.2.0-rc.5",
  "tracing",
@@ -575,7 +502,7 @@ dependencies = [
 name = "phon-engine"
 version = "0.2.0-rc.5"
 dependencies = [
- "facet-value 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
+ "facet-value",
  "phon-ir",
  "phon-schema 0.2.0-rc.5",
  "phon-storage",
@@ -606,18 +533,18 @@ name = "phon-schema"
 version = "0.2.0-rc.5"
 dependencies = [
  "blake3",
- "facet-value 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
- "taxon 0.2.0-rc.5 (git+https://github.com/bearcove/weavy?rev=ca49bde0aa8e105da661edf6dd09f7013fe86aaf)",
+ "facet-value",
+ "taxon",
 ]
 
 [[package]]
 name = "phon-schema"
 version = "0.2.0-rc.5"
-source = "git+https://github.com/bearcove/phon?rev=c25a3776a093323193236bc00bed4c5ae1a0af93#c25a3776a093323193236bc00bed4c5ae1a0af93"
+source = "git+https://github.com/bearcove/phon?branch=deps%2Falign-weavy-for-dibs#1c9a11327e43f6211cdaebb1304572a931479de1"
 dependencies = [
  "blake3",
- "facet-value 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=43e100aa2287cf7f054219add5612c40e551d48e)",
- "taxon 0.2.0-rc.5 (git+https://github.com/bearcove/weavy?rev=cc6ef2587a30cf3206d9e5a632b782f3b16d7fc5)",
+ "facet-value",
+ "taxon",
 ]
 
 [[package]]
@@ -625,7 +552,7 @@ name = "phon-storage"
 version = "0.2.0-rc.5"
 dependencies = [
  "blake3",
- "facet-value 0.50.0-rc.5 (git+https://github.com/facet-rs/facet?rev=84c07e6defd0c2fc46d7772e2aaa191143edd813)",
+ "facet-value",
  "memmap2",
  "phon-schema 0.2.0-rc.5",
 ]
@@ -842,15 +769,7 @@ dependencies = [
 [[package]]
 name = "taxon"
 version = "0.2.0-rc.5"
-source = "git+https://github.com/bearcove/weavy?rev=ca49bde0aa8e105da661edf6dd09f7013fe86aaf#ca49bde0aa8e105da661edf6dd09f7013fe86aaf"
-dependencies = [
- "blake3",
-]
-
-[[package]]
-name = "taxon"
-version = "0.2.0-rc.5"
-source = "git+https://github.com/bearcove/weavy?rev=cc6ef2587a30cf3206d9e5a632b782f3b16d7fc5#cc6ef2587a30cf3206d9e5a632b782f3b16d7fc5"
+source = "git+https://github.com/bearcove/weavy?branch=deps%2Falign-phon-for-dibs#fa427909fcc450db623d23446b2d2254535339c1"
 dependencies = [
  "blake3",
 ]
@@ -973,11 +892,11 @@ dependencies = [
 [[package]]
 name = "weavy"
 version = "0.2.2"
-source = "git+https://github.com/bearcove/weavy?rev=ca49bde0aa8e105da661edf6dd09f7013fe86aaf#ca49bde0aa8e105da661edf6dd09f7013fe86aaf"
+source = "git+https://github.com/bearcove/weavy?branch=deps%2Falign-phon-for-dibs#fa427909fcc450db623d23446b2d2254535339c1"
 dependencies = [
  "blake3",
  "copypatch",
- "phon-schema 0.2.0-rc.5 (git+https://github.com/bearcove/phon?rev=c25a3776a093323193236bc00bed4c5ae1a0af93)",
+ "phon-schema 0.2.0-rc.5 (git+https://github.com/bearcove/phon?branch=deps%2Falign-weavy-for-dibs)",
 ]
 
 [[package]]
