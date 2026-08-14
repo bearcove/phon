@@ -21,10 +21,10 @@ homepage = "https://github.com/bearcove/phon"
 
 [workspace.dependencies]
 blake3 = { version = "1", default-features = false }
-copypatch = { git = "https://github.com/bearcove/weavy", rev = "ca49bde0aa8e105da661edf6dd09f7013fe86aaf" }
-facet = { git = "https://github.com/facet-rs/facet", rev = "84c07e6defd0c2fc46d7772e2aaa191143edd813" }
-facet-json = { git = "https://github.com/facet-rs/facet", rev = "84c07e6defd0c2fc46d7772e2aaa191143edd813" }
-facet-value = { git = "https://github.com/facet-rs/facet", rev = "84c07e6defd0c2fc46d7772e2aaa191143edd813" }
+copypatch = { git = "https://github.com/bearcove/weavy", branch = "deps/align-phon-for-dibs" }
+facet = { git = "https://github.com/facet-rs/facet", branch = "deps/align-weavy-for-dibs" }
+facet-json = { git = "https://github.com/facet-rs/facet", branch = "deps/align-weavy-for-dibs" }
+facet-value = { git = "https://github.com/facet-rs/facet", branch = "deps/align-weavy-for-dibs" }
 phon = { path = "rust/phon", version = "0.2.0-rc.5" }
 phon-codegen = { path = "rust/phon-codegen", version = "0.2.0-rc.5" }
 phon-conformance = { path = "rust/phon-conformance", version = "0.2.0-rc.5" }
@@ -33,8 +33,8 @@ phon-ir = { path = "rust/phon-ir", version = "0.2.0-rc.5" }
 phon-jit = { path = "rust/phon-jit", version = "0.2.0-rc.5" }
 phon-storage = { path = "rust/phon-storage", version = "0.2.0-rc.5" }
 phon-schema = { path = "rust/phon-schema", version = "0.2.0-rc.5" }
-taxon = { git = "https://github.com/bearcove/weavy", rev = "ca49bde0aa8e105da661edf6dd09f7013fe86aaf" }
-weavy = { git = "https://github.com/bearcove/weavy", rev = "ca49bde0aa8e105da661edf6dd09f7013fe86aaf" }
+taxon = { git = "https://github.com/bearcove/weavy", branch = "deps/align-phon-for-dibs" }
+weavy = { git = "https://github.com/bearcove/weavy", branch = "deps/align-phon-for-dibs" }
 proptest = "1"
 tracing = { version = "0.1.43", default-features = false, features = ["std", "attributes"] }
 tracing-subscriber = { version = "0.3.22", default-features = false, features = ["fmt", "std", "env-filter"] }
