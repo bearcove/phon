@@ -253,6 +253,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "facet-phon"
+version = "0.2.0-rc.5"
+dependencies = [
+ "facet",
+ "facet-value",
+ "phon-schema",
+ "phon-storage",
+]
+
+[[package]]
 name = "facet-reflect"
 version = "0.50.0-rc.5"
 source = "git+https://github.com/facet-rs/facet?rev=098cd67310a62a8c78f378695587f8d6a6b644d4#098cd67310a62a8c78f378695587f8d6a6b644d4"

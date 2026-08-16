@@ -5,6 +5,7 @@
 //! runs and variable-width byte payloads. Nodes are explicitly encoded in
 //! little endian; mapped bytes are never transmuted to Rust layouts.
 pub mod compact;
+pub mod container;
 use std::fmt;
 
 use facet_value::{VArray, VBytes, VObject, VString, Value};

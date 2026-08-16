@@ -1,0 +1,17 @@
+[package]
+name = "facet-phon"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Acyclic typed Facet binding for PHON schemas and compact values."
+
+[dependencies]
+facet.workspace = true
+facet-value.workspace = true
+phon-schema.workspace = true
+phon-storage.workspace = true
+
+[lints]
+workspace = true

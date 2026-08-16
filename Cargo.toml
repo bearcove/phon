@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+  "rust/facet-phon",
   "rust/phon",
   "rust/phon-codegen",
   "rust/phon-conformance",
@@ -25,6 +26,7 @@ copypatch = { git = "https://github.com/bearcove/weavy", rev = "743a7abe8f999ab4
 facet = { git = "https://github.com/facet-rs/facet", rev = "098cd67310a62a8c78f378695587f8d6a6b644d4" }
 facet-json = { git = "https://github.com/facet-rs/facet", rev = "098cd67310a62a8c78f378695587f8d6a6b644d4" }
 facet-value = { git = "https://github.com/facet-rs/facet", rev = "098cd67310a62a8c78f378695587f8d6a6b644d4" }
+facet-phon = { path = "rust/facet-phon", version = "0.2.0-rc.5" }
 phon = { path = "rust/phon", version = "0.2.0-rc.5" }
 phon-codegen = { path = "rust/phon-codegen", version = "0.2.0-rc.5" }
 phon-conformance = { path = "rust/phon-conformance", version = "0.2.0-rc.5" }
