@@ -22,9 +22,9 @@ homepage = "https://github.com/bearcove/phon"
 [workspace.dependencies]
 blake3 = { version = "1", default-features = false }
 copypatch = { git = "https://github.com/bearcove/weavy", rev = "743a7abe8f999ab4122df1cc02e2441849210a23" }
-facet = { git = "https://github.com/facet-rs/facet", rev = "5705fa6c51289bea49f5729c52dc5e23cedce4f8" }
-facet-json = { git = "https://github.com/facet-rs/facet", rev = "5705fa6c51289bea49f5729c52dc5e23cedce4f8" }
-facet-value = { git = "https://github.com/facet-rs/facet", rev = "5705fa6c51289bea49f5729c52dc5e23cedce4f8" }
+facet = { git = "https://github.com/facet-rs/facet", rev = "098cd67310a62a8c78f378695587f8d6a6b644d4" }
+facet-json = { git = "https://github.com/facet-rs/facet", rev = "098cd67310a62a8c78f378695587f8d6a6b644d4" }
+facet-value = { git = "https://github.com/facet-rs/facet", rev = "098cd67310a62a8c78f378695587f8d6a6b644d4" }
 phon = { path = "rust/phon", version = "0.2.0-rc.5" }
 phon-codegen = { path = "rust/phon-codegen", version = "0.2.0-rc.5" }
 phon-conformance = { path = "rust/phon-conformance", version = "0.2.0-rc.5" }
@@ -41,11 +41,8 @@ tracing-subscriber = { version = "0.3.22", default-features = false, features = 
 
 [patch.crates-io]
 copypatch = { git = "https://github.com/bearcove/weavy", rev = "743a7abe8f999ab4122df1cc02e2441849210a23" }
-taxon = { git = "https://github.com/bearcove/taxon", rev = "c0369bcfceb8e85ccc433bb6478161cd8124c7e3" }
 weavy = { git = "https://github.com/bearcove/weavy", rev = "743a7abe8f999ab4122df1cc02e2441849210a23" }
 
-[patch."https://github.com/bearcove/weavy"]
-taxon = { git = "https://github.com/bearcove/taxon", rev = "c0369bcfceb8e85ccc433bb6478161cd8124c7e3" }
 
 [workspace.lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(facet_no_doc)", "cfg(kani)"] }
