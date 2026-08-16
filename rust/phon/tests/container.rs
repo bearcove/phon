@@ -1,7 +1,5 @@
+use phon::container::{Container, ContainerError, ContainerLimits, ContainerWriter, SectionInput};
 use phon_schema::SchemaId;
-use phon_storage::container::{
-    Container, ContainerError, ContainerLimits, ContainerWriter, SectionInput,
-};
 
 const MAGIC: [u8; 8] = *b"TESTCNT\0";
 

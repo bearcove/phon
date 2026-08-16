@@ -1,12 +1,9 @@
 use std::borrow::Cow;
 use std::fmt;
 
-use facet_value::{VArray, VObject, VString, Value};
-use phon_schema::{
-    Field, Primitive, Schema, SchemaId, SchemaKind, SchemaRef, primitive_id, resolve_ids,
-};
-
-use crate::compact::{self, Registry};
+use facet::Facet;
+use facet_phon::Codec;
+use phon_schema::SchemaId;
 
 const HEADER_SIZE: usize = 64;
 const DIRECTORY_ALIGNMENT: usize = 8;
@@ -50,7 +47,7 @@ pub enum ContainerError {
         expected: [u8; 16],
         actual: [u8; 16],
     },
-    Compact(compact::CompactError),
+    FacetPhon(facet_phon::Error),
 }
 
 impl fmt::Display for ContainerError {
@@ -61,9 +58,9 @@ impl fmt::Display for ContainerError {
 
 impl std::error::Error for ContainerError {}
 
-impl From<compact::CompactError> for ContainerError {
-    fn from(error: compact::CompactError) -> Self {
-        Self::Compact(error)
+impl From<facet_phon::Error> for ContainerError {
+    fn from(error: facet_phon::Error) -> Self {
+        Self::FacetPhon(error)
     }
 }
 
@@ -220,6 +217,7 @@ pub struct Container<'a> {
     bytes: &'a [u8],
     major: u16,
     minor: u16,
+    identity: [u8; 16],
     sections: Vec<SectionDescriptor>,
     directory_end: usize,
 }
@@ -284,6 +282,7 @@ impl<'a> Container<'a> {
             bytes,
             major,
             minor,
+            identity: expected,
             sections,
             directory_end,
         })
@@ -299,6 +298,10 @@ impl<'a> Container<'a> {
 
     pub const fn directory_end(&self) -> usize {
         self.directory_end
+    }
+
+    pub const fn identity(&self) -> [u8; 16] {
+        self.identity
     }
 
     pub fn section(&self, kind: u32) -> Option<Section<'_>> {
@@ -477,138 +480,77 @@ fn validate_sections(
     Ok(())
 }
 
-fn directory_schemas() -> (Vec<Schema>, SchemaId) {
-    let field = |name: &str, primitive| Field {
-        name: name.into(),
-        schema: SchemaRef::concrete(primitive_id(primitive)),
-        required: true,
-    };
-    let section = Schema {
-        id: SchemaId::from_raw(1),
-        type_params: Vec::new(),
-        kind: SchemaKind::Struct {
-            name: "PhonContainerSection".into(),
-            fields: vec![
-                field("name", Primitive::String),
-                field("kind", Primitive::U32),
-                field("offset", Primitive::U64),
-                field("encoded_len", Primitive::U64),
-                field("alignment", Primitive::U32),
-                field("encoding", Primitive::U8),
-                field("schema_id", Primitive::U64),
-                field("flags", Primitive::U32),
-            ],
-        },
-    };
-    let directory = Schema {
-        id: SchemaId::from_raw(2),
-        type_params: Vec::new(),
-        kind: SchemaKind::List {
-            element: SchemaRef::concrete(section.id),
-        },
-    };
-    let schemas = resolve_ids(vec![section, directory]);
-    let root = schemas[1].id;
-    (schemas, root)
+#[derive(Facet)]
+struct Directory {
+    sections: Vec<DirectorySection>,
+}
+
+#[derive(Facet)]
+struct DirectorySection {
+    name: String,
+    kind: u32,
+    offset: u64,
+    encoded_len: u64,
+    alignment: u32,
+    encoding: u8,
+    schema_id: u64,
+    flags: u32,
 }
 
 fn encode_directory(sections: &[SectionDescriptor]) -> Result<Vec<u8>, ContainerError> {
-    let (schemas, root) = directory_schemas();
-    let registry = Registry::new(schemas);
-    let mut values = VArray::new();
-    for section in sections {
-        let mut value = VObject::new();
-        value.insert(VString::new("name"), Value::from(section.name.as_str()));
-        value.insert(VString::new("kind"), Value::from(section.kind));
-        value.insert(VString::new("offset"), Value::from(section.offset));
-        value.insert(
-            VString::new("encoded_len"),
-            Value::from(section.encoded_len),
-        );
-        value.insert(VString::new("alignment"), Value::from(section.alignment));
-        value.insert(
-            VString::new("encoding"),
-            Value::from(if section.schema_id.is_some() {
-                ENCODING_PHON
-            } else {
-                ENCODING_RAW
-            }),
-        );
-        value.insert(
-            VString::new("schema_id"),
-            Value::from(section.schema_id.map_or(0, SchemaId::as_u64)),
-        );
-        value.insert(VString::new("flags"), Value::from(section.flags));
-        values.push(value);
-    }
-    compact::to_bytes(&values.into(), root, &registry).map_err(Into::into)
+    let directory = Directory {
+        sections: sections
+            .iter()
+            .map(|section| DirectorySection {
+                name: section.name.clone(),
+                kind: section.kind,
+                offset: section.offset,
+                encoded_len: section.encoded_len,
+                alignment: section.alignment,
+                encoding: if section.schema_id.is_some() {
+                    ENCODING_PHON
+                } else {
+                    ENCODING_RAW
+                },
+                schema_id: section.schema_id.map_or(0, SchemaId::as_u64),
+                flags: section.flags,
+            })
+            .collect(),
+    };
+    Codec::<Directory>::new()?
+        .encode(&directory)
+        .map_err(Into::into)
 }
 
 fn decode_directory(
     bytes: &[u8],
     max_sections: usize,
 ) -> Result<Vec<SectionDescriptor>, ContainerError> {
-    let (schemas, root) = directory_schemas();
-    let registry = Registry::new(schemas);
-    let value = compact::from_bytes(bytes, root, &registry)?;
-    let values = value.as_array().ok_or(ContainerError::MalformedDirectory)?;
-    if values.len() > max_sections {
+    let directory = Codec::<Directory>::new()?.decode(bytes)?;
+    if directory.sections.len() > max_sections {
         return Err(ContainerError::LimitExceeded);
     }
     let mut sections = Vec::new();
     sections
-        .try_reserve_exact(values.len())
+        .try_reserve_exact(directory.sections.len())
         .map_err(|_| ContainerError::LimitExceeded)?;
-    for index in 0..values.len() {
-        let object = values
-            .get(index)
-            .and_then(Value::as_object)
-            .ok_or(ContainerError::MalformedDirectory)?;
-        let encoding = object_u8(object, "encoding")?;
-        let schema_id = object_u64(object, "schema_id")?;
+    for section in directory.sections {
+        let schema_id = match section.encoding {
+            ENCODING_RAW if section.schema_id == 0 => None,
+            ENCODING_PHON => Some(SchemaId::from_raw(section.schema_id)),
+            _ => return Err(ContainerError::MalformedDirectory),
+        };
         sections.push(SectionDescriptor {
-            name: object_string(object, "name")?,
-            kind: object_u32(object, "kind")?,
-            offset: object_u64(object, "offset")?,
-            encoded_len: object_u64(object, "encoded_len")?,
-            alignment: object_u32(object, "alignment")?,
-            schema_id: match encoding {
-                ENCODING_RAW if schema_id == 0 => None,
-                ENCODING_PHON => Some(SchemaId::from_raw(schema_id)),
-                _ => return Err(ContainerError::MalformedDirectory),
-            },
-            flags: object_u32(object, "flags")?,
+            name: section.name,
+            kind: section.kind,
+            offset: section.offset,
+            encoded_len: section.encoded_len,
+            alignment: section.alignment,
+            schema_id,
+            flags: section.flags,
         });
     }
     Ok(sections)
-}
-
-fn object_value<'a>(object: &'a VObject, name: &str) -> Result<&'a Value, ContainerError> {
-    object
-        .get(&VString::new(name))
-        .ok_or(ContainerError::MalformedDirectory)
-}
-
-fn object_string(object: &VObject, name: &str) -> Result<String, ContainerError> {
-    object_value(object, name)?
-        .as_string()
-        .map(|value| value.as_str().to_owned())
-        .ok_or(ContainerError::MalformedDirectory)
-}
-
-fn object_u64(object: &VObject, name: &str) -> Result<u64, ContainerError> {
-    object_value(object, name)?
-        .as_number()
-        .and_then(|value| value.to_u64())
-        .ok_or(ContainerError::MalformedDirectory)
-}
-
-fn object_u32(object: &VObject, name: &str) -> Result<u32, ContainerError> {
-    u32::try_from(object_u64(object, name)?).map_err(|_| ContainerError::MalformedDirectory)
-}
-
-fn object_u8(object: &VObject, name: &str) -> Result<u8, ContainerError> {
-    u8::try_from(object_u64(object, name)?).map_err(|_| ContainerError::MalformedDirectory)
 }
 
 fn identity(bytes: &[u8]) -> [u8; 16] {

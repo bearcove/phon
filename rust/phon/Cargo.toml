@@ -18,4 +18,7 @@ phon-ir.workspace = true
 phon-engine.workspace = true
 phon-jit.workspace = true
 facet.workspace = true
+facet-phon.workspace = true
+phon-storage.workspace = true
+blake3.workspace = true
 facet-value.workspace = true

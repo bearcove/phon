@@ -14,6 +14,7 @@
 // r[impl crates.concern-separation]
 pub use phon_schema as schema_contract;
 
+pub mod container;
 pub mod derive;
 
 /// The ergonomic typed API: `encode::<T>` and `decode::<T>`, resolving thunk
