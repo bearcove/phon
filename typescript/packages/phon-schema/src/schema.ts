@@ -200,6 +200,8 @@ function hashWith(write: (out: ByteSink) => void): bigint {
 }
 
 function writeTypeParams(out: ByteSink, params: readonly string[]): void {
+  if (params.length === 0) return;
+  out.str("type-params");
   out.u32(params.length);
   for (const param of params) out.str(param);
 }
@@ -344,6 +346,7 @@ class IdentityWalk {
   // r[impl schema-identity.canonical-encoding]
   schema(idx: number, path: readonly number[], out: ByteSink): void {
     const schema = this.batch[idx]!;
+    writeTypeParams(out, schema.typeParams);
     switch (schema.kind.kind) {
       case "primitive":
         out.str(schema.kind.primitive);
@@ -351,14 +354,12 @@ class IdentityWalk {
       case "struct":
         out.str("struct");
         out.str(schema.kind.name);
-        writeTypeParams(out, schema.typeParams);
         out.u32(schema.kind.fields.length);
         schema.kind.fields.forEach((field) => this.field(field, path, out));
         return;
       case "enum":
         out.str("enum");
         out.str(schema.kind.name);
-        writeTypeParams(out, schema.typeParams);
         out.u32(schema.kind.variants.length);
         for (const variant of schema.kind.variants) {
           out.str(variant.name);

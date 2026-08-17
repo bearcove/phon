@@ -343,3 +343,26 @@ fn durable_file_feature_admission_enforces_required_optional_matrix() {
     assert_eq!(admitted.diagnostics()[0].feature(), &feature);
     assert_eq!(admitted.diagnostics()[0].message(), "invalid index");
 }
+
+// r[verify compact.file.bootstrap]
+// r[verify compact.file.admission]
+#[test]
+fn durable_file_feature_fixture_is_golden() {
+    const GOLDEN: &[u8] = include_bytes!("../testdata/durable-file-feature-v1.phon");
+    let plan = plan_with_aux(false);
+    let bytes = plan.write_to_vec().unwrap();
+    if std::env::var_os("PHON_UPDATE_GOLDEN").is_some() {
+        std::fs::write(
+            concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/testdata/durable-file-feature-v1.phon"
+            ),
+            &bytes,
+        )
+        .unwrap();
+    }
+    assert_eq!(bytes, GOLDEN);
+    let view = StructuralFileView::parse(GOLDEN, plan.region_refs()).unwrap();
+    assert_eq!(view.optional_features(), &[qname("org.example.index-v1")]);
+    assert_eq!(view.aux_extents()[0].view().bytes(), b"index");
+}
