@@ -111,7 +111,7 @@ fn durable_file_forward_sink_retries_interrupted_write() {
 }
 
 #[test]
-fn durable_file_rejects_wrong_schema_unreachable_duplicate_and_dangling_regions() {
+fn durable_file_rejects_wrong_schema_unreachable_and_dangling_regions() {
     let mut wrong = valid_plan();
     wrong.region_refs_mut()[0].target_schema = root_schema();
     assert!(matches!(
@@ -126,20 +126,42 @@ fn durable_file_rejects_wrong_schema_unreachable_duplicate_and_dangling_regions(
         Err(DurableFileError::UnreachableRegion { region: 0 })
     ));
 
-    let mut duplicate = valid_plan();
-    let duplicate_ref = duplicate.region_refs()[0].clone();
-    duplicate.region_refs_mut().push(duplicate_ref);
-    assert!(matches!(
-        duplicate.write_to_vec(),
-        Err(DurableFileError::DuplicateRegionReachability { region: 0, .. })
-    ));
-
     let mut dangling = valid_plan();
     dangling.region_refs_mut()[0].target_region = 1;
     assert!(matches!(
         dangling.write_to_vec(),
         Err(DurableFileError::DanglingRegionReference { region: 1, .. })
     ));
+}
+
+#[test]
+fn durable_file_allows_repeated_and_cyclic_region_references() {
+    let mut repeated = valid_plan();
+    let mut alias = repeated.region_refs()[0].clone();
+    alias.encoded_offset = 4;
+    repeated.region_refs_mut().push(alias);
+    repeated.write_to_vec().unwrap();
+
+    let cyclic = DurableFilePlan::new(
+        empty_bundle(),
+        ExtentPayload::repeatable(root_schema(), b"\0\0\0\0".to_vec()),
+        vec![ExtentPayload::repeatable(region_schema(), b"abc".to_vec())],
+        vec![
+            RegionRefOccurrence {
+                source_region: None,
+                target_region: 0,
+                target_schema: region_schema(),
+                encoded_offset: 0,
+            },
+            RegionRefOccurrence {
+                source_region: Some(0),
+                target_region: 0,
+                target_schema: region_schema(),
+                encoded_offset: 1,
+            },
+        ],
+    );
+    cyclic.write_to_vec().unwrap();
 }
 
 #[test]

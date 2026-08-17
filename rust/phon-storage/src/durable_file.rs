@@ -46,11 +46,6 @@ pub enum DurableFileError {
     UnreachableRegion {
         region: u32,
     },
-    DuplicateRegionReachability {
-        region: u32,
-        first_offset: u64,
-        second_offset: u64,
-    },
     DanglingRegionReference {
         region: u32,
         encoded_offset: u64,
@@ -271,13 +266,8 @@ fn validate_region_graph(regions: &[SchemaRef], refs: &[RegionRefOccurrence]) ->
                 encoded_offset: reference.encoded_offset,
             });
         }
-        if let Some(first) = seen.insert(reference.target_region, reference.encoded_offset) {
-            return Err(DurableFileError::DuplicateRegionReachability {
-                region: reference.target_region,
-                first_offset: first,
-                second_offset: reference.encoded_offset,
-            });
-        }
+        seen.entry(reference.target_region)
+            .or_insert(reference.encoded_offset);
     }
     for region in 0..regions.len() as u32 {
         if !seen.contains_key(&region) {
