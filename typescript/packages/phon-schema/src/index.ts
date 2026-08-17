@@ -50,8 +50,10 @@ export type {
   RegionReference,
 } from "./durable.ts";
 
-// The schema model + self-describing schema parser + alignment analysis.
+// The schema model, durable schema-bundle admission, self-describing schema
+// parser, and alignment analysis.
 export {
+  parseSchemaBundle,
   schemaFromBytes,
   Registry,
   alignment,

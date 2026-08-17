@@ -432,6 +432,8 @@ class EncCodegen {
       }
       case "dynamic":
         return `H.writeValueInto(out, ${vexpr});\n`;
+      case "semantic":
+        return this.genEncRef(kind.representation, vexpr, this.childDepth(depth));
       case "tensor":
       case "channel":
       case "external":

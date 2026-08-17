@@ -375,6 +375,10 @@ function refTargets(kind: SchemaKind): bigint[] {
     case "external":
       if (kind.metadata) addRef(kind.metadata);
       break;
+    case "semantic":
+      for (const arg of kind.args) addRef(arg);
+      addRef(kind.representation);
+      break;
   }
   return out;
 }

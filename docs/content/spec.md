@@ -601,19 +601,22 @@ decoded.
 > *string* is a `u32` LE byte length then its UTF-8 bytes; a `bool` is one byte,
 > `0` or `1`. A schema's `id` field is never fed into its own hash.
 >
-> A schema's kind is its tag string followed by its body:
+> Before every schema kind, encode its type-parameter list as the string marker
+> `type-params`, a `u32` count, and each parameter name, omitting the entire
+> prefix only when the list is empty. This rule applies uniformly to every
+> schema kind. The schema kind then follows as its tag string and body:
 >
 > - **primitive**: the primitive tag — one of `bool`, `u8`, `u16`, `u32`, `u64`,
 >   `u128`, `i8`, `i16`, `i32`, `i64`, `i128`, `f32`, `f64`, `char`, `string`,
 >   `bytes`, `datetime`, `uuid`, `qname`, `unit`, `never`.
-> - **struct**: `struct`; the name; the type-parameter list (a `u32` count then
->   each parameter name); a `u32` field count; then per field, in declaration
->   order: the field name, the `required` bool, the field's reference.
-> - **enum**: `enum`; the name; the type-parameter list; a `u32` variant count;
->   then per variant, in declaration order: the variant name, its index (`u32`),
->   and its payload — `unit`; or `newtype` then a reference; or `tuple` then a
->   `u32` count then references; or `struct` then a `u32` field count then fields
->   encoded as above.
+> - **struct**: `struct`; the name; a `u32` field count; then per field, in
+>   declaration order: the field name, the `required` bool, and the field's
+>   reference.
+> - **enum**: `enum`; the name; a `u32` variant count; then per variant, in
+>   declaration order: the variant name, its index (`u32`), and its payload —
+>   `unit`; or `newtype` then a reference; or `tuple` then a `u32` count then
+>   references; or `struct` then a `u32` field count then fields encoded as
+>   above.
 > - **tuple**: `tuple`; a `u32` element count; then each element reference.
 > - **list** / **set** / **option**: the tag (`list` / `set` / `option`) then
 >   the element reference.
@@ -635,12 +638,12 @@ decoded.
 > parameter, `var` then the parameter name. The argument count is always written
 > — zero for a non-generic concrete reference — with no conditional marker.
 >
-> Every tag and marker token above — the kind tags, the primitive tags, the
-> variant-payload tags (`unit`/`newtype`/`tuple`/`struct`), the channel direction
-> tags (`tx`/`rx`), and the reference markers (`concrete`/`var`/`inline`/
-> `backref`) — is fed to the hash as a *string* by the building-block rule (a
-> `u32` LE length then its UTF-8 bytes), never as a bare byte, so token framing
-> is unambiguous and identical across implementations.
+> Every tag and marker token above — `type-params`, the kind tags, the primitive
+> tags, the variant-payload tags (`unit`/`newtype`/`tuple`/`struct`), the channel
+> direction tags (`tx`/`rx`), and the reference markers (`concrete`/`var`/
+> `inline`/`backref`) — is fed to the hash as a *string* by the building-block
+> rule (a `u32` LE length then its UTF-8 bytes), never as a bare byte, so token
+> framing is unambiguous and identical across implementations.
 
 Everything affecting structure or semantics is in the hash. Documentation and
 other descriptive annotations are carried separately and never affect a

@@ -150,7 +150,7 @@ dependencies = [
 [[package]]
 name = "facet"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=098cd67310a62a8c78f378695587f8d6a6b644d4#098cd67310a62a8c78f378695587f8d6a6b644d4"
+source = "git+https://github.com/facet-rs/facet?rev=87c7bda5347edcdcdb8a67fcfa279722438d2156#87c7bda5347edcdcdb8a67fcfa279722438d2156"
 dependencies = [
  "autocfg",
  "facet-core",
@@ -160,19 +160,19 @@ dependencies = [
 [[package]]
 name = "facet-core"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=098cd67310a62a8c78f378695587f8d6a6b644d4#098cd67310a62a8c78f378695587f8d6a6b644d4"
+source = "git+https://github.com/facet-rs/facet?rev=87c7bda5347edcdcdb8a67fcfa279722438d2156#87c7bda5347edcdcdb8a67fcfa279722438d2156"
 dependencies = [
  "autocfg",
  "const-fnv1a-hash",
  "iddqd",
  "impls",
- "taxon 0.2.0-rc.5 (git+https://github.com/bearcove/taxon?rev=c0369bcfceb8e85ccc433bb6478161cd8124c7e3)",
+ "taxon",
 ]
 
 [[package]]
 name = "facet-dessert"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=098cd67310a62a8c78f378695587f8d6a6b644d4#098cd67310a62a8c78f378695587f8d6a6b644d4"
+source = "git+https://github.com/facet-rs/facet?rev=87c7bda5347edcdcdb8a67fcfa279722438d2156#87c7bda5347edcdcdb8a67fcfa279722438d2156"
 dependencies = [
  "facet-core",
  "facet-reflect",
@@ -181,7 +181,7 @@ dependencies = [
 [[package]]
 name = "facet-format"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=098cd67310a62a8c78f378695587f8d6a6b644d4#098cd67310a62a8c78f378695587f8d6a6b644d4"
+source = "git+https://github.com/facet-rs/facet?rev=87c7bda5347edcdcdb8a67fcfa279722438d2156#87c7bda5347edcdcdb8a67fcfa279722438d2156"
 dependencies = [
  "facet-core",
  "facet-dessert",
@@ -193,7 +193,7 @@ dependencies = [
 [[package]]
 name = "facet-json"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=098cd67310a62a8c78f378695587f8d6a6b644d4#098cd67310a62a8c78f378695587f8d6a6b644d4"
+source = "git+https://github.com/facet-rs/facet?rev=87c7bda5347edcdcdb8a67fcfa279722438d2156#87c7bda5347edcdcdb8a67fcfa279722438d2156"
 dependencies = [
  "copypatch",
  "facet",
@@ -206,7 +206,7 @@ dependencies = [
 [[package]]
 name = "facet-macro-parse"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=098cd67310a62a8c78f378695587f8d6a6b644d4#098cd67310a62a8c78f378695587f8d6a6b644d4"
+source = "git+https://github.com/facet-rs/facet?rev=87c7bda5347edcdcdb8a67fcfa279722438d2156#87c7bda5347edcdcdb8a67fcfa279722438d2156"
 dependencies = [
  "facet-macro-types",
  "proc-macro2",
@@ -216,7 +216,7 @@ dependencies = [
 [[package]]
 name = "facet-macro-types"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=098cd67310a62a8c78f378695587f8d6a6b644d4#098cd67310a62a8c78f378695587f8d6a6b644d4"
+source = "git+https://github.com/facet-rs/facet?rev=87c7bda5347edcdcdb8a67fcfa279722438d2156#87c7bda5347edcdcdb8a67fcfa279722438d2156"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -226,7 +226,7 @@ dependencies = [
 [[package]]
 name = "facet-macros"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=098cd67310a62a8c78f378695587f8d6a6b644d4#098cd67310a62a8c78f378695587f8d6a6b644d4"
+source = "git+https://github.com/facet-rs/facet?rev=87c7bda5347edcdcdb8a67fcfa279722438d2156#87c7bda5347edcdcdb8a67fcfa279722438d2156"
 dependencies = [
  "facet-macros-impl",
 ]
@@ -234,7 +234,7 @@ dependencies = [
 [[package]]
 name = "facet-macros-impl"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=098cd67310a62a8c78f378695587f8d6a6b644d4#098cd67310a62a8c78f378695587f8d6a6b644d4"
+source = "git+https://github.com/facet-rs/facet?rev=87c7bda5347edcdcdb8a67fcfa279722438d2156#87c7bda5347edcdcdb8a67fcfa279722438d2156"
 dependencies = [
  "facet-macro-parse",
  "facet-macro-types",
@@ -247,7 +247,7 @@ dependencies = [
 [[package]]
 name = "facet-path"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=098cd67310a62a8c78f378695587f8d6a6b644d4#098cd67310a62a8c78f378695587f8d6a6b644d4"
+source = "git+https://github.com/facet-rs/facet?rev=87c7bda5347edcdcdb8a67fcfa279722438d2156#87c7bda5347edcdcdb8a67fcfa279722438d2156"
 dependencies = [
  "facet-core",
 ]
@@ -255,7 +255,7 @@ dependencies = [
 [[package]]
 name = "facet-reflect"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=098cd67310a62a8c78f378695587f8d6a6b644d4#098cd67310a62a8c78f378695587f8d6a6b644d4"
+source = "git+https://github.com/facet-rs/facet?rev=87c7bda5347edcdcdb8a67fcfa279722438d2156#87c7bda5347edcdcdb8a67fcfa279722438d2156"
 dependencies = [
  "facet-core",
  "facet-path",
@@ -266,7 +266,7 @@ dependencies = [
 [[package]]
 name = "facet-solver"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=098cd67310a62a8c78f378695587f8d6a6b644d4#098cd67310a62a8c78f378695587f8d6a6b644d4"
+source = "git+https://github.com/facet-rs/facet?rev=87c7bda5347edcdcdb8a67fcfa279722438d2156#87c7bda5347edcdcdb8a67fcfa279722438d2156"
 dependencies = [
  "facet-core",
  "facet-reflect",
@@ -276,7 +276,7 @@ dependencies = [
 [[package]]
 name = "facet-value"
 version = "0.50.0-rc.5"
-source = "git+https://github.com/facet-rs/facet?rev=098cd67310a62a8c78f378695587f8d6a6b644d4#098cd67310a62a8c78f378695587f8d6a6b644d4"
+source = "git+https://github.com/facet-rs/facet?rev=87c7bda5347edcdcdb8a67fcfa279722438d2156#87c7bda5347edcdcdb8a67fcfa279722438d2156"
 dependencies = [
  "facet-core",
  "facet-format",
@@ -534,7 +534,7 @@ version = "0.2.0-rc.5"
 dependencies = [
  "blake3",
  "facet-value",
- "taxon 0.2.0-rc.5 (git+https://github.com/bearcove/taxon?rev=2bb2c2e90c83d8f35b0f5a30f7ad022987303471)",
+ "taxon",
 ]
 
 [[package]]
@@ -760,14 +760,6 @@ dependencies = [
 name = "taxon"
 version = "0.2.0-rc.5"
 source = "git+https://github.com/bearcove/taxon?rev=2bb2c2e90c83d8f35b0f5a30f7ad022987303471#2bb2c2e90c83d8f35b0f5a30f7ad022987303471"
-dependencies = [
- "blake3",
-]
-
-[[package]]
-name = "taxon"
-version = "0.2.0-rc.5"
-source = "git+https://github.com/bearcove/taxon?rev=c0369bcfceb8e85ccc433bb6478161cd8124c7e3#9cdae0ac5ae0ba9bf5971baa32d5f22488af8610"
 dependencies = [
  "blake3",
 ]

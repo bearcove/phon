@@ -141,6 +141,9 @@ function encodeKind(out: ByteSink, value: Value, kind: SchemaKind, reg: Registry
     case "dynamic":
       writeValueInto(out, value);
       return;
+    case "semantic":
+      encodeRef(out, value, kind.representation, reg);
+      return;
     case "tensor":
     case "channel":
     case "external":
@@ -319,6 +322,8 @@ function decodeKind(r: Reader, kind: SchemaKind, reg: Registry, depth: number): 
     }
     case "dynamic":
       return readValue(r, depth);
+    case "semantic":
+      return decodeRef(r, kind.representation, reg, depth + 1);
     case "tensor":
     case "channel":
     case "external":
