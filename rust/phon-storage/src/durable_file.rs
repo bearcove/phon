@@ -1,9 +1,9 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use blake3::Hash;
 use phon_schema::{
-    DecodeError, SchemaBundle, SchemaBundleLimits, SchemaId, SchemaRef, schema_bundle_from_bytes,
-    schema_bundle_to_bytes,
+    DecodeError, QualifiedName, SchemaBundle, SchemaBundleLimits, SchemaId, SchemaRef,
+    qualified_name_from_compact_bytes, schema_bundle_from_bytes, schema_bundle_to_bytes,
 };
 
 const MAGIC: &[u8; 8] = b"PHONFIL1";
@@ -11,6 +11,7 @@ const FORMAT: u32 = 1;
 const ALIGNMENT: u64 = 16;
 const FIXED_HEADER: usize = 32;
 const DESCRIPTOR_SIZE: usize = 72;
+const MANIFEST_MAGIC: &[u8; 8] = b"PHONFTR1";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DurableFileError {
@@ -58,6 +59,23 @@ pub enum DurableFileError {
     WriteFailed {
         written: u64,
         kind: std::io::ErrorKind,
+    },
+    AuxFeatureNotDeclared {
+        feature: QualifiedName,
+    },
+    InvalidAuxNumber {
+        feature: QualifiedName,
+        name: QualifiedName,
+        expected: u32,
+        actual: u32,
+    },
+    InvalidFeatureManifest,
+    UnknownRequiredFeature {
+        feature: QualifiedName,
+    },
+    RequiredFeatureInvalid {
+        feature: QualifiedName,
+        message: &'static str,
     },
 }
 impl core::fmt::Display for DurableFileError {
@@ -111,12 +129,39 @@ impl ExtentPayload {
     }
 }
 
+// r[impl compact.file.admission]
 #[derive(Clone, Debug)]
+pub struct AuxExtentPayload {
+    feature: QualifiedName,
+    name: QualifiedName,
+    number: u32,
+    payload: ExtentPayload,
+}
+impl AuxExtentPayload {
+    #[must_use]
+    pub fn compact(
+        feature: QualifiedName,
+        name: QualifiedName,
+        number: u32,
+        payload: ExtentPayload,
+    ) -> Self {
+        Self {
+            feature,
+            name,
+            number,
+            payload,
+        }
+    }
+}
+
 pub struct DurableFilePlan {
     schemas: SchemaBundle,
     root: ExtentPayload,
     regions: Vec<ExtentPayload>,
     region_refs: Vec<RegionRefOccurrence>,
+    required_features: Vec<QualifiedName>,
+    optional_features: Vec<QualifiedName>,
+    aux: Vec<AuxExtentPayload>,
 }
 impl DurableFilePlan {
     #[must_use]
@@ -131,6 +176,9 @@ impl DurableFilePlan {
             root,
             regions,
             region_refs,
+            required_features: Vec::new(),
+            optional_features: Vec::new(),
+            aux: Vec::new(),
         }
     }
     #[must_use]
@@ -140,26 +188,53 @@ impl DurableFilePlan {
     pub fn region_refs_mut(&mut self) -> &mut Vec<RegionRefOccurrence> {
         &mut self.region_refs
     }
+    pub fn set_features(
+        &mut self,
+        required: Vec<QualifiedName>,
+        optional: Vec<QualifiedName>,
+        aux: Vec<AuxExtentPayload>,
+    ) {
+        self.required_features = required;
+        self.optional_features = optional;
+        self.aux = aux;
+    }
     pub fn write_to_vec(&self) -> Result<Vec<u8>> {
         self.validate_graph()?;
+        let manifest = FeatureManifest::canonical(
+            &self.required_features,
+            &self.optional_features,
+            &self.aux,
+        )?;
+        let manifest_bytes = manifest.to_bytes()?;
         let schema_bytes = schema_bundle_to_bytes(self.schemas.schemas())
             .map_err(DurableFileError::SchemaBundle)?;
-        let mut payloads = Vec::with_capacity(self.regions.len() + 2);
-        payloads.push((schema_bytes.as_slice(), None));
-        payloads.push((self.root.pass(0), Some(&self.root.schema)));
-        for region in &self.regions {
-            payloads.push((region.pass(0), Some(&region.schema)));
+        let mut payloads = Vec::with_capacity(self.regions.len() + self.aux.len() + 2);
+        payloads.push((schema_bytes.as_slice(), None, 0u32, 0u32));
+        payloads.push((self.root.pass(0), Some(&self.root.schema), 1, 0));
+        for (number, region) in self.regions.iter().enumerate() {
+            payloads.push((region.pass(0), Some(&region.schema), 2, number as u32));
+        }
+        for aux in &self.aux {
+            payloads.push((
+                aux.payload.pass(0),
+                Some(&aux.payload.schema),
+                3,
+                aux.number,
+            ));
         }
         let descriptor_bytes = payloads
             .len()
             .checked_mul(DESCRIPTOR_SIZE)
             .ok_or(DurableFileError::OffsetOverflow)?;
-        let envelope_len = FIXED_HEADER
+        let descriptor_offset = FIXED_HEADER
+            .checked_add(manifest_bytes.len())
+            .ok_or(DurableFileError::OffsetOverflow)?;
+        let envelope_len = descriptor_offset
             .checked_add(descriptor_bytes)
             .ok_or(DurableFileError::OffsetOverflow)? as u64;
         let mut offsets = Vec::with_capacity(payloads.len());
         let mut cursor = align_up(envelope_len, ALIGNMENT)?;
-        for (index, (bytes, _)) in payloads.iter().enumerate() {
+        for (index, (bytes, _, _, _)) in payloads.iter().enumerate() {
             offsets.push(cursor);
             cursor = cursor
                 .checked_add(bytes.len() as u64)
@@ -175,17 +250,11 @@ impl DurableFilePlan {
         out.extend_from_slice(&FORMAT.to_le_bytes());
         out.extend_from_slice(&(payloads.len() as u32).to_le_bytes());
         out.extend_from_slice(&file_len.to_le_bytes());
-        out.extend_from_slice(&(FIXED_HEADER as u64).to_le_bytes());
-        for (index, ((bytes, schema), offset)) in payloads.iter().zip(&offsets).enumerate() {
-            let kind = if index == 0 {
-                0
-            } else if index == 1 {
-                1
-            } else {
-                2
-            };
-            out.extend_from_slice(&(kind as u32).to_le_bytes());
-            out.extend_from_slice(&((index.saturating_sub(2)) as u32).to_le_bytes());
+        out.extend_from_slice(&(descriptor_offset as u64).to_le_bytes());
+        out.extend_from_slice(&manifest_bytes);
+        for ((bytes, schema, kind, number), offset) in payloads.iter().zip(&offsets) {
+            out.extend_from_slice(&kind.to_le_bytes());
+            out.extend_from_slice(&number.to_le_bytes());
             out.extend_from_slice(&offset.to_le_bytes());
             out.extend_from_slice(&(bytes.len() as u64).to_le_bytes());
             out.extend_from_slice(&ALIGNMENT.to_le_bytes());
@@ -193,13 +262,15 @@ impl DurableFilePlan {
             out.extend_from_slice(blake3::hash(bytes).as_bytes());
         }
         pad(&mut out, ALIGNMENT as usize);
-        for (index, (expected, _)) in payloads.iter().enumerate() {
+        for (index, (expected, _, _, _)) in payloads.iter().enumerate() {
             let actual = if index == 0 {
                 schema_bytes.as_slice()
             } else if index == 1 {
                 self.root.pass(1)
-            } else {
+            } else if index < self.regions.len() + 2 {
                 self.regions[index - 2].pass(1)
+            } else {
+                self.aux[index - self.regions.len() - 2].payload.pass(1)
             };
             if actual.len() != expected.len() || blake3::hash(actual) != blake3::hash(expected) {
                 return Err(DurableFileError::NonRepeatable { extent: index });
@@ -243,12 +314,200 @@ impl DurableFilePlan {
             &self
                 .regions
                 .iter()
-                .map(|r| r.schema.clone())
+                .map(|region| region.schema.clone())
                 .collect::<Vec<_>>(),
             &self.region_refs,
         )
     }
 }
+
+// r[impl compact.file.bootstrap]
+// r[impl compact.file.format-version]
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct AuxIdentity {
+    feature: QualifiedName,
+    name: QualifiedName,
+    number: u32,
+}
+
+#[derive(Clone, Debug, Default)]
+struct FeatureManifest {
+    required: Vec<QualifiedName>,
+    optional: Vec<QualifiedName>,
+    aux: Vec<AuxIdentity>,
+}
+impl FeatureManifest {
+    fn canonical(
+        required: &[QualifiedName],
+        optional: &[QualifiedName],
+        aux: &[AuxExtentPayload],
+    ) -> Result<Self> {
+        if !strictly_sorted(required)
+            || !strictly_sorted(optional)
+            || required
+                .iter()
+                .any(|feature| optional.binary_search(feature).is_ok())
+        {
+            return Err(DurableFileError::InvalidFeatureManifest);
+        }
+        let mut identities = aux
+            .iter()
+            .map(|aux| AuxIdentity {
+                feature: aux.feature.clone(),
+                name: aux.name.clone(),
+                number: aux.number,
+            })
+            .collect::<Vec<_>>();
+        identities.sort_by(|left, right| {
+            (&left.feature, &left.name, left.number).cmp(&(
+                &right.feature,
+                &right.name,
+                right.number,
+            ))
+        });
+        let supplied = aux
+            .iter()
+            .map(|aux| (&aux.feature, &aux.name, aux.number))
+            .collect::<Vec<_>>();
+        let canonical = identities
+            .iter()
+            .map(|aux| (&aux.feature, &aux.name, aux.number))
+            .collect::<Vec<_>>();
+        if supplied != canonical {
+            return Err(DurableFileError::InvalidFeatureManifest);
+        }
+        let mut expected_numbers = BTreeMap::<(&QualifiedName, &QualifiedName), u32>::new();
+        for identity in &identities {
+            if required.binary_search(&identity.feature).is_err()
+                && optional.binary_search(&identity.feature).is_err()
+            {
+                return Err(DurableFileError::AuxFeatureNotDeclared {
+                    feature: identity.feature.clone(),
+                });
+            }
+            let expected = expected_numbers
+                .entry((&identity.feature, &identity.name))
+                .or_default();
+            if identity.number != *expected {
+                return Err(DurableFileError::InvalidAuxNumber {
+                    feature: identity.feature.clone(),
+                    name: identity.name.clone(),
+                    expected: *expected,
+                    actual: identity.number,
+                });
+            }
+            *expected += 1;
+        }
+        Ok(Self {
+            required: required.to_vec(),
+            optional: optional.to_vec(),
+            aux: identities,
+        })
+    }
+
+    fn to_bytes(&self) -> Result<Vec<u8>> {
+        if self.required.is_empty() && self.optional.is_empty() && self.aux.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut out = Vec::new();
+        out.extend_from_slice(MANIFEST_MAGIC);
+        write_names(&mut out, &self.required)?;
+        write_names(&mut out, &self.optional)?;
+        out.extend_from_slice(&(self.aux.len() as u32).to_le_bytes());
+        for aux in &self.aux {
+            write_name(&mut out, &aux.feature)?;
+            write_name(&mut out, &aux.name)?;
+            out.extend_from_slice(&aux.number.to_le_bytes());
+        }
+        Ok(out)
+    }
+
+    fn parse(bytes: &[u8]) -> Result<Self> {
+        if bytes.is_empty() {
+            return Ok(Self::default());
+        }
+        let mut cursor = 0usize;
+        if take(bytes, &mut cursor, MANIFEST_MAGIC.len())? != MANIFEST_MAGIC {
+            return Err(DurableFileError::InvalidFeatureManifest);
+        }
+        let required = read_names(bytes, &mut cursor)?;
+        let optional = read_names(bytes, &mut cursor)?;
+        let count = read_u32(bytes, &mut cursor)? as usize;
+        let mut aux = Vec::with_capacity(count);
+        for _ in 0..count {
+            aux.push(AuxIdentity {
+                feature: read_name(bytes, &mut cursor)?,
+                name: read_name(bytes, &mut cursor)?,
+                number: read_u32(bytes, &mut cursor)?,
+            });
+        }
+        if cursor != bytes.len() {
+            return Err(DurableFileError::InvalidFeatureManifest);
+        }
+        let payloads = aux
+            .iter()
+            .map(|identity| AuxExtentPayload {
+                feature: identity.feature.clone(),
+                name: identity.name.clone(),
+                number: identity.number,
+                payload: ExtentPayload::repeatable(
+                    SchemaRef::concrete(SchemaId::from_raw(1)),
+                    Vec::new(),
+                ),
+            })
+            .collect::<Vec<_>>();
+        Self::canonical(&required, &optional, &payloads)
+    }
+}
+
+fn strictly_sorted(names: &[QualifiedName]) -> bool {
+    names.windows(2).all(|pair| pair[0] < pair[1])
+}
+
+fn write_names(out: &mut Vec<u8>, names: &[QualifiedName]) -> Result<()> {
+    out.extend_from_slice(&(names.len() as u32).to_le_bytes());
+    for name in names {
+        write_name(out, name)?;
+    }
+    Ok(())
+}
+
+fn write_name(out: &mut Vec<u8>, name: &QualifiedName) -> Result<()> {
+    let bytes = name.compact_bytes();
+    let len = u32::try_from(bytes.len()).map_err(|_| DurableFileError::OffsetOverflow)?;
+    out.extend_from_slice(&len.to_le_bytes());
+    out.extend_from_slice(&bytes);
+    Ok(())
+}
+
+fn read_names(bytes: &[u8], cursor: &mut usize) -> Result<Vec<QualifiedName>> {
+    let count = read_u32(bytes, cursor)? as usize;
+    (0..count).map(|_| read_name(bytes, cursor)).collect()
+}
+
+fn read_name(bytes: &[u8], cursor: &mut usize) -> Result<QualifiedName> {
+    let len = read_u32(bytes, cursor)? as usize;
+    qualified_name_from_compact_bytes(take(bytes, cursor, len)?)
+        .map_err(|_| DurableFileError::InvalidFeatureManifest)
+}
+
+fn read_u32(bytes: &[u8], cursor: &mut usize) -> Result<u32> {
+    Ok(u32::from_le_bytes(
+        take(bytes, cursor, 4)?.try_into().unwrap(),
+    ))
+}
+
+fn take<'a>(bytes: &'a [u8], cursor: &mut usize, len: usize) -> Result<&'a [u8]> {
+    let end = cursor
+        .checked_add(len)
+        .ok_or(DurableFileError::OffsetOverflow)?;
+    let result = bytes
+        .get(*cursor..end)
+        .ok_or(DurableFileError::InvalidFeatureManifest)?;
+    *cursor = end;
+    Ok(result)
+}
+
 fn validate_region_graph(regions: &[SchemaRef], refs: &[RegionRefOccurrence]) -> Result<()> {
     let mut seen: HashMap<u32, u64> = HashMap::new();
     for reference in refs {
@@ -302,6 +561,7 @@ impl ExtentDescriptor {
             .copy_from_slice(&offset.to_le_bytes())
     }
 }
+#[derive(Clone, Copy)]
 pub struct ExtentView<'a> {
     descriptor: &'a ExtentDescriptor,
     bytes: &'a [u8],
@@ -320,10 +580,85 @@ impl<'a> ExtentView<'a> {
         self.descriptor
     }
 }
+
+#[derive(Clone, Copy)]
+pub struct AuxExtentView<'a> {
+    identity: &'a AuxIdentity,
+    view: ExtentView<'a>,
+}
+impl<'a> AuxExtentView<'a> {
+    #[must_use]
+    pub fn feature(&self) -> &QualifiedName {
+        &self.identity.feature
+    }
+    #[must_use]
+    pub fn name(&self) -> &QualifiedName {
+        &self.identity.name
+    }
+    #[must_use]
+    pub fn number(&self) -> u32 {
+        self.identity.number
+    }
+    #[must_use]
+    pub fn view(&self) -> ExtentView<'a> {
+        self.view
+    }
+}
+
+type FeatureValidator = for<'a> fn(&[AuxExtentView<'a>]) -> core::result::Result<(), &'static str>;
+
+#[derive(Default)]
+pub struct FeatureRegistry {
+    validators: BTreeMap<QualifiedName, FeatureValidator>,
+}
+impl FeatureRegistry {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn register(&mut self, feature: QualifiedName, validator: FeatureValidator) {
+        self.validators.insert(feature, validator);
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FeatureDiagnostic {
+    feature: QualifiedName,
+    message: &'static str,
+}
+impl FeatureDiagnostic {
+    #[must_use]
+    pub fn feature(&self) -> &QualifiedName {
+        &self.feature
+    }
+    #[must_use]
+    pub fn message(&self) -> &'static str {
+        self.message
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FeatureAdmission {
+    diagnostics: Vec<FeatureDiagnostic>,
+    discarded_aux: usize,
+}
+impl FeatureAdmission {
+    #[must_use]
+    pub fn diagnostics(&self) -> &[FeatureDiagnostic] {
+        &self.diagnostics
+    }
+    #[must_use]
+    pub fn discarded_aux(&self) -> usize {
+        self.discarded_aux
+    }
+}
+// r[impl compact.file.admission]
 pub struct StructuralFileView<'a> {
     schemas: SchemaBundle,
     bytes: &'a [u8],
     extents: Vec<ExtentDescriptor>,
+    manifest: FeatureManifest,
+    region_count: usize,
 }
 impl<'a> StructuralFileView<'a> {
     pub fn parse(bytes: &'a [u8], refs: &[RegionRefOccurrence]) -> Result<Self> {
@@ -348,7 +683,13 @@ impl<'a> StructuralFileView<'a> {
                 actual: bytes.len(),
             });
         }
-        let descriptor_end = FIXED_HEADER
+        let descriptor_offset =
+            usize::try_from(u64_at(bytes, 24)?).map_err(|_| DurableFileError::OffsetOverflow)?;
+        if descriptor_offset < FIXED_HEADER || descriptor_offset > bytes.len() {
+            return Err(DurableFileError::InvalidFeatureManifest);
+        }
+        let manifest = FeatureManifest::parse(&bytes[FIXED_HEADER..descriptor_offset])?;
+        let descriptor_end = descriptor_offset
             .checked_add(
                 count
                     .checked_mul(DESCRIPTOR_SIZE)
@@ -366,7 +707,7 @@ impl<'a> StructuralFileView<'a> {
 
         let mut extents = Vec::with_capacity(count);
         for index in 0..count {
-            let base = FIXED_HEADER + index * DESCRIPTOR_SIZE;
+            let base = descriptor_offset + index * DESCRIPTOR_SIZE;
             let kind = u32_at(bytes, base)?;
             let number = u32_at(bytes, base + 4)?;
             let offset = u64_at(bytes, base + 8)?;
@@ -432,10 +773,25 @@ impl<'a> StructuralFileView<'a> {
         if extents.len() < 2 || extents[0].kind != 0 || extents[1].kind != 1 {
             return Err(DurableFileError::InvalidDescriptor);
         }
-        for (index, extent) in extents.iter().enumerate().skip(2) {
-            if extent.kind != 2 || extent.number as usize != index - 2 {
+        let mut region_count = 0usize;
+        for extent in extents.iter().skip(2) {
+            if extent.kind != 2 {
+                break;
+            }
+            if extent.number as usize != region_count {
                 return Err(DurableFileError::InvalidDescriptor);
             }
+            region_count += 1;
+        }
+        let aux_extents = &extents[region_count + 2..];
+        if aux_extents.len() != manifest.aux.len()
+            || aux_extents.iter().any(|extent| extent.kind != 3)
+            || aux_extents
+                .iter()
+                .zip(&manifest.aux)
+                .any(|(extent, identity)| extent.number != identity.number)
+        {
+            return Err(DurableFileError::InvalidDescriptor);
         }
 
         let schema_extent = &extents[0];
@@ -444,13 +800,13 @@ impl<'a> StructuralFileView<'a> {
             SchemaBundleLimits::default(),
         )
         .map_err(DurableFileError::SchemaBundle)?;
-        validate_extent_schema(&extents[1], &schemas)?;
-        for extent in extents.iter().skip(2) {
+        for extent in extents.iter().skip(1) {
             validate_extent_schema(extent, &schemas)?;
         }
         let regions = extents
             .iter()
             .skip(2)
+            .take(region_count)
             .map(|extent| {
                 extent
                     .schema
@@ -463,7 +819,69 @@ impl<'a> StructuralFileView<'a> {
             schemas,
             bytes,
             extents,
+            manifest,
+            region_count,
         })
+    }
+    #[must_use]
+    pub fn required_features(&self) -> &[QualifiedName] {
+        &self.manifest.required
+    }
+    #[must_use]
+    pub fn optional_features(&self) -> &[QualifiedName] {
+        &self.manifest.optional
+    }
+    #[must_use]
+    pub fn aux_extents(&self) -> Vec<AuxExtentView<'_>> {
+        self.manifest
+            .aux
+            .iter()
+            .enumerate()
+            .map(|(index, identity)| AuxExtentView {
+                identity,
+                view: self.view(self.region_count + 2 + index),
+            })
+            .collect()
+    }
+    pub fn admit_features(&self, registry: &FeatureRegistry) -> Result<FeatureAdmission> {
+        let all_aux = self.aux_extents();
+        let mut admission = FeatureAdmission::default();
+        for feature in &self.manifest.required {
+            let Some(validator) = registry.validators.get(feature) else {
+                return Err(DurableFileError::UnknownRequiredFeature {
+                    feature: feature.clone(),
+                });
+            };
+            let aux = all_aux
+                .iter()
+                .copied()
+                .filter(|extent| extent.feature() == feature)
+                .collect::<Vec<_>>();
+            if let Err(message) = validator(&aux) {
+                return Err(DurableFileError::RequiredFeatureInvalid {
+                    feature: feature.clone(),
+                    message,
+                });
+            }
+        }
+        for feature in &self.manifest.optional {
+            let Some(validator) = registry.validators.get(feature) else {
+                continue;
+            };
+            let aux = all_aux
+                .iter()
+                .copied()
+                .filter(|extent| extent.feature() == feature)
+                .collect::<Vec<_>>();
+            if let Err(message) = validator(&aux) {
+                admission.discarded_aux += aux.len();
+                admission.diagnostics.push(FeatureDiagnostic {
+                    feature: feature.clone(),
+                    message,
+                });
+            }
+        }
+        Ok(admission)
     }
     #[must_use]
     pub fn extents(&self) -> &[ExtentDescriptor] {
@@ -482,9 +900,10 @@ impl<'a> StructuralFileView<'a> {
         self.view(1)
     }
     pub fn region(&self, number: u32) -> Option<ExtentView<'_>> {
-        self.extents
-            .get(number as usize + 2)
-            .map(|_| self.view(number as usize + 2))
+        if number as usize >= self.region_count {
+            return None;
+        }
+        Some(self.view(number as usize + 2))
     }
     fn view(&self, index: usize) -> ExtentView<'_> {
         let descriptor = &self.extents[index];
