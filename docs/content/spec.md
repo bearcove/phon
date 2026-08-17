@@ -287,7 +287,7 @@ you'd expect. `Array`, `Tensor`, `Channel`, `Semantic`, `Dynamic`, and
 > and package-boundary limits as the surrounding engine. `Semantic` is compact
 > only: it has no self-describing tag and cannot appear inside `Dynamic`.
 >
-> `phon.region-ref-v1<T>` is the durable region semantic. Its representation is
+> `org.bearcove.phon.region-ref-v1<T>` is the durable region semantic. Its representation is
 > `u32`, and its handler turns an owner-scoped builder or `FileView` reference
 > into that file-local number and back. The number is never a pointer, byte
 > offset, process-global identifier, or freely constructible standalone value.
@@ -321,24 +321,34 @@ you'd expect. `Array`, `Tensor`, `Channel`, `Semantic`, `Dynamic`, and
 ## Qualified names
 
 ```rust
-pub struct QualifiedName(String);
+pub struct QualifiedName(taxon::SemanticName);
 ```
 
-`QualifiedName` is a PHON-owned schema/control-plane identifier, distinct from
-the `QName` value primitive and from `facet_value::VQName`. Its canonical string
-is lowercase reverse-DNS components separated by dots, optionally followed by
-additional hyphenated components: ASCII `a`-`z` or digit within a component,
-each component begins with a letter, empty components are invalid, and meanings
-are immutable once published. Examples include
-`org.bearcove.phon.region-ref-v1` and `org.bearcove.phon.blake3-256-v1`.
+`QualifiedName` is PHON's validated schema/control-plane identifier, distinct
+from the dynamic `QName` primitive and `facet_value::VQName`. Its revision-1
+canonical grammar is algorithmic:
 
-The wire form is a u32 byte length followed by canonical UTF-8 bytes; schema
-identity hashes those bytes as a string. The schema model, feature negotiation,
-Aux directory, and digest registry expose only this PHON type. A binding may
-bridge it to another library's name type, but no such library type is part of
-the contract. This keeps schema identity and durable framing capable of living
-in a lower facet-value-free crate even though the optional dynamic `Value` codec
-currently uses `facet_value`.
+- the complete value is ASCII and 1 through 255 bytes;
+- it contains at least two non-empty labels separated by single `.` bytes;
+- each label's first byte is `a` through `z`;
+- later label bytes are `a` through `z`, `0` through `9`, or `-`;
+- `-` is neither consecutive nor the last byte of a label;
+- no case folding, Unicode normalization, escaping, or other normalization is
+  performed: a non-canonical input is rejected rather than rewritten.
+
+PHON reserves the `phon.` and `org.bearcove.phon.` prefixes. Core schema,
+feature, Aux, and digest declarations use an explicit trusted-authority
+constructor; application-created names reject either prefix. Meanings are
+immutable once published. The canonical built-ins in this revision use the
+fully qualified `org.bearcove.phon.*` namespace.
+
+The compact, identity-hash, and control-plane body is a `u32` little-endian byte
+length followed by canonical UTF-8 bytes. The self-describing form is the
+ordinary `STRING` tag (`0x0f`) followed by that body. Decoders validate the
+grammar, bound, and namespace authority before exposing a `QualifiedName` or a
+schema containing one. Taxon owns only the non-empty, `u32`-bounded
+`SemanticName` identity carrier and generic `Semantic` shape; Taxon does not
+own PHON grammar, namespace, or wire policy.
 
 > r[type-system.qualified-name]
 >
@@ -466,8 +476,8 @@ use only:
 - Plain `enum` and `struct` declarations with owned data
 - The specific generic containers `Vec<T>` and `Option<T>`
 - Primitive types `String`, `u32`, `u64`
-- The phon-defined types `SchemaId`, `SchemaRef`, `Schema`, `SchemaKind`,
-  `Primitive`, `Field`, `Variant`, `VariantPayload`
+- The phon-defined types `QualifiedName`, `SchemaId`, `SchemaRef`, `Schema`,
+  `SchemaKind`, `Primitive`, `Field`, `Variant`, `VariantPayload`
 
 > r[type-system.rust-subset]
 >
@@ -964,7 +974,7 @@ define mutable files, append journals, signatures, or encrypted payloads.
 ## Semantic region references and authoring
 
 Separate placement is explicit in the application schema. `RegionRef<T>` is the
-binding spelling for the semantic type `phon.region-ref-v1<T>`, whose structural
+binding spelling for the semantic type `org.bearcove.phon.region-ref-v1<T>`, whose structural
 representation is `u32`:
 
 ```rust
@@ -1015,7 +1025,7 @@ write-pass non-repeatability rather than null or default values.
 > r[compact.file.explicit-regions]
 >
 > Separate placement is represented by the explicit semantic type
-> `phon.region-ref-v1<T>`. Existing schemas and compact values do not acquire
+> `org.bearcove.phon.region-ref-v1<T>`. Existing schemas and compact values do not acquire
 > file-only behavior from annotations or writer policy.
 
 ## File layout and permanent bootstrap
@@ -1186,7 +1196,7 @@ resolving every semantic handler needed by that path and building the ordinary
 writer-to-reader compatibility plan before consuming its compact bytes.
 Compatibility between two Semantic values requires the same qualified name and
 is delegated to that handler; compatible representations alone do not imply
-semantic compatibility. `T` and `phon.region-ref-v1<T>` are incompatible storage
+semantic compatibility. `T` and `org.bearcove.phon.region-ref-v1<T>` are incompatible storage
 shapes.
 
 Before exposing borrowed values, admission:
@@ -1256,7 +1266,7 @@ whole-snapshot commit protocol, which format 1 does not define.
 
 ## Named list-offset auxiliary extent
 
-`phon.list-offsets-v1` is an optional feature and Aux name. Its compact payload
+`org.bearcove.phon.list-offsets-v1` is an optional feature and Aux name. Its compact payload
 is:
 
 ```text
@@ -1270,7 +1280,7 @@ ListTargetV1 = Root | Region { number: u32 }
 
 The target's closed concrete writer schema must resolve to `List<T>`; the
 element schema is derived and is not repeated. There is at most one
-`phon.list-offsets-v1` Aux per logical target. Listing the feature with no valid
+`org.bearcove.phon.list-offsets-v1` Aux per logical target. Listing the feature with no valid
 payload does not satisfy it.
 
 Each entry is the extent-relative compact decoder cursor immediately before its
@@ -1283,7 +1293,7 @@ access without an attested index reports `IndexUnavailable`.
 
 ## Integrity and identity
 
-Revision 1 defines `phon.blake3-256-v1`: 32 digest bytes over exactly the
+Revision 1 defines `org.bearcove.phon.blake3-256-v1`: 32 digest bytes over exactly the
 physical extent bytes. An extent digest proves byte equality only, not role,
 schema, feature target, authorization, or whole-file snapshot identity. Caches
 include semantic context, length, and digest and still perform admission.
@@ -1297,8 +1307,10 @@ Three identities are distinct:
 
 ## Documentation and inspection
 
-Revision 1 reserves the optional Aux name `phon.schema-docs-v1`. Its eventual
-payload may be added without changing framing. Documentation targets are:
+Revision 1 reserves the namespace `org.bearcove.phon.schema-docs` but assigns
+no versioned documentation feature or Aux name. An unassigned name MUST NOT
+appear in a revision-1 file. A future specification may assign a versioned
+name and payload without changing framing. Documentation targets are:
 
 ```text
 DocTargetV1 =
@@ -1860,7 +1872,7 @@ implementation has its own. TypeScript has no descriptors at all; its values are
 objects accessed by property, with no offsets to describe.
 
 `Semantic` descriptors use opaque handler access rather than exposing their
-representation as the application value. For `phon.region-ref-v1<T>`, encoding
+representation as the application value. For `org.bearcove.phon.region-ref-v1<T>`, encoding
 asks the active builder to map the branded handle to its frozen `u32`; decoding
 asks the admitted `FileView` to construct a file-scoped handle carrying the
 inner descriptor. Rust, Swift, and generated TypeScript accessors preserve this
