@@ -166,7 +166,7 @@ dependencies = [
  "const-fnv1a-hash",
  "iddqd",
  "impls",
- "taxon",
+ "taxon 0.2.0-rc.5 (git+https://github.com/bearcove/taxon?rev=c0369bcfceb8e85ccc433bb6478161cd8124c7e3)",
 ]
 
 [[package]]
@@ -534,7 +534,7 @@ version = "0.2.0-rc.5"
 dependencies = [
  "blake3",
  "facet-value",
- "taxon",
+ "taxon 0.2.0-rc.5 (git+https://github.com/bearcove/taxon?rev=9cdae0ac5ae0ba9bf5971baa32d5f22488af8610)",
 ]
 
 [[package]]
@@ -759,7 +759,15 @@ dependencies = [
 [[package]]
 name = "taxon"
 version = "0.2.0-rc.5"
-source = "git+https://github.com/bearcove/taxon?rev=c0369bcfceb8e85ccc433bb6478161cd8124c7e3#c0369bcfceb8e85ccc433bb6478161cd8124c7e3"
+source = "git+https://github.com/bearcove/taxon?rev=9cdae0ac5ae0ba9bf5971baa32d5f22488af8610#9cdae0ac5ae0ba9bf5971baa32d5f22488af8610"
+dependencies = [
+ "blake3",
+]
+
+[[package]]
+name = "taxon"
+version = "0.2.0-rc.5"
+source = "git+https://github.com/bearcove/taxon?rev=c0369bcfceb8e85ccc433bb6478161cd8124c7e3#9cdae0ac5ae0ba9bf5971baa32d5f22488af8610"
 dependencies = [
  "blake3",
 ]

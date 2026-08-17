@@ -1367,6 +1367,51 @@ mod tests {
     }
 
     #[test]
+    fn imported_taxon_identity_distinguishes_ordered_type_parameters() {
+        let generic_tuple = |type_params: &[&str]| Schema {
+            id: SchemaId::from_raw(1),
+            type_params: type_params.iter().map(|name| (*name).to_string()).collect(),
+            kind: SchemaKind::Tuple {
+                elements: vec![SchemaRef::var("T"), SchemaRef::var("U")],
+            },
+        };
+
+        let tu = crate::resolve_ids(vec![generic_tuple(&["T", "U"])])[0].id;
+        let ut = crate::resolve_ids(vec![generic_tuple(&["U", "T"])])[0].id;
+        assert_ne!(tu, ut);
+    }
+
+    #[test]
+    fn imported_taxon_identity_propagates_nested_cycle_parameter_changes() {
+        let cycle = |second_params: &[&str]| {
+            vec![
+                Schema {
+                    id: SchemaId::from_raw(10),
+                    type_params: vec!["T".to_string(), "U".to_string()],
+                    kind: SchemaKind::Tuple {
+                        elements: vec![SchemaRef::concrete(SchemaId::from_raw(20))],
+                    },
+                },
+                Schema {
+                    id: SchemaId::from_raw(20),
+                    type_params: second_params
+                        .iter()
+                        .map(|name| (*name).to_string())
+                        .collect(),
+                    kind: SchemaKind::Tuple {
+                        elements: vec![SchemaRef::concrete(SchemaId::from_raw(10))],
+                    },
+                },
+            ]
+        };
+
+        let canonical = crate::resolve_ids(cycle(&["T", "U"]));
+        let reordered = crate::resolve_ids(cycle(&["U", "T"]));
+        assert_ne!(canonical[0].id, reordered[0].id);
+        assert_ne!(canonical[1].id, reordered[1].id);
+    }
+
+    #[test]
     // r[verify type-system.canonical-form]
     fn roundtrip_struct() {
         roundtrip(&Schema {
