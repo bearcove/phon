@@ -217,7 +217,7 @@ pub enum SchemaKind {
     Option { element: SchemaRef },
     Channel { direction: ChannelDirection, element: SchemaRef },
     Semantic {
-        name: QName,
+        name: QualifiedName,
         args: Vec<SchemaRef>,
         representation: SchemaRef,
     },
@@ -274,7 +274,7 @@ you'd expect. `Array`, `Tensor`, `Channel`, `Semantic`, `Dynamic`, and
 >
 > `Semantic` gives a schema-known value a fully-qualified, permanently versioned
 > meaning while delegating all wire bytes to `representation`. `name` is a
-> canonical `QName`; `args` are the semantic type arguments presented to the
+> canonical `QualifiedName`; `args` are the semantic type arguments presented to the
 > registered handler; `representation` is the ordinary PHON schema that alone
 > determines encoded length, alignment, and byte grammar. The handler may
 > validate, translate, or resolve that representation, but may not change its
@@ -282,7 +282,7 @@ you'd expect. `Array`, `Tensor`, `Channel`, `Semantic`, `Dynamic`, and
 > representation. Typed planning or semantic resolution requires an explicitly
 > registered handler and otherwise fails with `MissingSemanticHandler`; a file
 > naming a semantic never causes code to be downloaded or loaded automatically.
-> A handler declares whether its immutable QName contract is valid for messages,
+> A handler declares whether its immutable qualified-name contract is valid for messages,
 > durable files, or both, and executes under the same depth, work, allocation,
 > and package-boundary limits as the surrounding engine. `Semantic` is compact
 > only: it has no self-describing tag and cannot appear inside `Dynamic`.
@@ -317,6 +317,34 @@ you'd expect. `Array`, `Tensor`, `Channel`, `Semantic`, `Dynamic`, and
 > self-describing form, because without the schema there is no `kind` and no
 > metadata type. See [External attachments](#external-attachments) for the
 > transport boundary.
+
+## Qualified names
+
+```rust
+pub struct QualifiedName(String);
+```
+
+`QualifiedName` is a PHON-owned schema/control-plane identifier, distinct from
+the `QName` value primitive and from `facet_value::VQName`. Its canonical string
+is lowercase reverse-DNS components separated by dots, optionally followed by
+additional hyphenated components: ASCII `a`-`z` or digit within a component,
+each component begins with a letter, empty components are invalid, and meanings
+are immutable once published. Examples include
+`org.bearcove.phon.region-ref-v1` and `org.bearcove.phon.blake3-256-v1`.
+
+The wire form is a u32 byte length followed by canonical UTF-8 bytes; schema
+identity hashes those bytes as a string. The schema model, feature negotiation,
+Aux directory, and digest registry expose only this PHON type. A binding may
+bridge it to another library's name type, but no such library type is part of
+the contract. This keeps schema identity and durable framing capable of living
+in a lower facet-value-free crate even though the optional dynamic `Value` codec
+currently uses `facet_value`.
+
+> r[type-system.qualified-name]
+>
+> Semantic, feature, Aux, and algorithm identifiers use canonical PHON
+> `QualifiedName` values. They never use the dynamic `QName` primitive or a
+> `facet_value` runtime type.
 
 
 ## Schema references
@@ -589,8 +617,8 @@ decoded.
 > - **dynamic**: `dynamic`.
 > - **external**: `external`; the `kind` string; then the `metadata` — one byte
 >   `0` for `None`, or `1` then the metadata reference.
-> - **semantic**: `semantic`; the canonical QName string; a `u32` argument
->   count then each argument reference; then the representation reference.
+> - **semantic**: `semantic`; the canonical `QualifiedName` string; a `u32`
+>   argument count then each argument reference; then the representation reference.
 >
 > A *reference* is encoded as `concrete` then the referenced `SchemaId` (8 bytes
 > LE) then a `u32` argument count then each argument reference; or, for a type
@@ -1027,8 +1055,8 @@ outer envelope, without guessing the body shape.
 ```text
 FilePreludeV1 {
     file_len: u64,
-    required_features: list<qname>,
-    optional_features: list<qname>,
+    required_features: list<QualifiedName>,
+    optional_features: list<QualifiedName>,
     extents: list<ExtentV1>,
 }
 
@@ -1042,7 +1070,7 @@ ExtentV1 {
 }
 
 DigestV1 {
-    algorithm: qname,
+    algorithm: QualifiedName,
     bytes: bytes,
 }
 
@@ -1050,7 +1078,7 @@ ExtentRoleV1 =
     Schemas
   | Root
   | Region { number: u32 }
-  | Aux { name: qname, number: u32 }
+  | Aux { name: QualifiedName, number: u32 }
 ```
 
 The first extent is `Schemas`; the second is `Root`. Region numbers are
@@ -1090,9 +1118,9 @@ arguments.
 
 ## Features and auxiliary extents
 
-Feature names and Aux names are canonical, fully-qualified QNames whose meanings
-are immutable. Both feature lists are sorted by canonical QName bytes, contain
-no duplicates, and are disjoint.
+Feature names and Aux names are canonical PHON `QualifiedName` values whose
+meanings are immutable. Both feature lists are sorted by canonical name bytes,
+contain no duplicates, and are disjoint.
 
 An optional feature is, by definition, universally safe for an implementation
 that does not recognize it to ignore without changing the root value. Anything
@@ -1135,7 +1163,7 @@ generic arity and closure, and rejects duplicate, missing, mismatched, or
 unreachable members.
 
 Schema-bundle format 1 reserves a canonical string-table representation so
-repeated type, field, variant, QName, and documentation strings can be interned
+repeated type, field, variant, qualified-name, and documentation strings can be interned
 without changing logical schemas or `SchemaId`. The precise encoding is chosen
 from the measurements required below. A later compressed bundle is selected by
 the schema-bundle `format`, not by changing ordinary compact value bytes.
@@ -1151,12 +1179,12 @@ having a message handler is insufficient.
 Admission has two explicit states. `StructuralFileView` proves the envelope,
 extent ranges, schema bundle, compact grammars, references, digests, and known
 Aux invariants. It may retain unknown optional Aux names and unknown Semantic
-QNames as inspectable representations. It is not described as executable.
+qualified names as inspectable representations. It is not described as executable.
 
 Typed root/region access upgrades the required path to executable status by
 resolving every semantic handler needed by that path and building the ordinary
 writer-to-reader compatibility plan before consuming its compact bytes.
-Compatibility between two Semantic values requires the same semantic QName and
+Compatibility between two Semantic values requires the same qualified name and
 is delegated to that handler; compatible representations alone do not imply
 semantic compatibility. `T` and `phon.region-ref-v1<T>` are incompatible storage
 shapes.
@@ -1291,7 +1319,7 @@ removing them may change physical/package identity only.
 
 A generic inspector can report envelope and feature versions, extent layout,
 digests, schemas and compatibility, named root/region values, unknown semantic
-QNames with their representations, Aux inventory, reference graphs, and index
+qualified names with their representations, Aux inventory, reference graphs, and index
 status. Application plugins may add semantics such as Weavy instruction
 disassembly without changing the generic file model.
 
@@ -1487,7 +1515,7 @@ The compatibility algorithm is:
 > Matched fields are compatible only when a rule says so. The same primitive is
 > compatible with itself. The same container kind (list, set, map, option) is
 > compatible when its element types are compatible. Two `Semantic` values are
-> compatible only when they have the same canonical QName and their registered
+> compatible only when they have the same canonical qualified name and their registered
 > handler builds a semantic compatibility plan; compatible structural
 > representations alone are insufficient. `T` and a semantic wrapping `T` are
 > different types unless that semantic handler explicitly defines a conversion.
