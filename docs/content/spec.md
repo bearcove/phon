@@ -216,7 +216,11 @@ pub enum SchemaKind {
     Tensor { element: SchemaRef, rank: Option<u32> },
     Option { element: SchemaRef },
     Channel { direction: ChannelDirection, element: SchemaRef },
-    RegionRef { element: SchemaRef },
+    Semantic {
+        name: QName,
+        args: Vec<SchemaRef>,
+        representation: SchemaRef,
+    },
     Dynamic,
     External { kind: String, metadata: Option<SchemaRef> },
 }
@@ -228,7 +232,7 @@ pub enum ChannelDirection {
 ```
 
 `Struct`, `Enum`, `Tuple`, `List`, `Set`, `Map`, and `Option` are the shapes
-you'd expect. `Array`, `Tensor`, `Channel`, `RegionRef`, `Dynamic`, and
+you'd expect. `Array`, `Tensor`, `Channel`, `Semantic`, `Dynamic`, and
 `External` deserve a note:
 
 > r[type-system.array]
@@ -266,16 +270,27 @@ you'd expect. `Array`, `Tensor`, `Channel`, `RegionRef`, `Dynamic`, and
 > into one and back — is a descriptor-model detail, covered in [Language
 > implementations](#language-implementations), not part of this wire contract.)
 
-> r[type-system.region-ref]
+> r[type-system.semantic]
 >
-> A `RegionRef<T>` is a resolver-scoped reference to a separately placed value
-> of schema `T`. Its compact wire value is one `u32` region number. The number
-> is local to one durable file or to an application-provided resolver; it is
-> never a pointer, byte offset, process-global identifier, or freely
-> constructible standalone value. `RegionRef` values appear only in compact,
-> schema-known contexts and never in self-describing form or inside `Dynamic`.
-> Durable-file authoring, admission, compatibility, and resolution are defined
-> in [Durable compact files](#durable-compact-files).
+> `Semantic` gives a schema-known value a fully-qualified, permanently versioned
+> meaning while delegating all wire bytes to `representation`. `name` is a
+> canonical `QName`; `args` are the semantic type arguments presented to the
+> registered handler; `representation` is the ordinary PHON schema that alone
+> determines encoded length, alignment, and byte grammar. The handler may
+> validate, translate, or resolve that representation, but may not change its
+> bytes. Unknown semantics remain structurally inspectable through their
+> representation. Typed planning or semantic resolution requires an explicitly
+> registered handler and otherwise fails with `MissingSemanticHandler`; a file
+> naming a semantic never causes code to be downloaded or loaded automatically.
+> A handler declares whether its immutable QName contract is valid for messages,
+> durable files, or both, and executes under the same depth, work, allocation,
+> and package-boundary limits as the surrounding engine. `Semantic` is compact
+> only: it has no self-describing tag and cannot appear inside `Dynamic`.
+>
+> `phon.region-ref-v1<T>` is the durable region semantic. Its representation is
+> `u32`, and its handler turns an owner-scoped builder or `FileView` reference
+> into that file-local number and back. The number is never a pointer, byte
+> offset, process-global identifier, or freely constructible standalone value.
 
 > r[type-system.dynamic]
 >
@@ -562,8 +577,8 @@ decoded.
 >   `u32` count then references; or `struct` then a `u32` field count then fields
 >   encoded as above.
 > - **tuple**: `tuple`; a `u32` element count; then each element reference.
-> - **list** / **set** / **option** / **regionref**: the tag (`list` / `set` /
->   `option` / `regionref`) then the element reference.
+> - **list** / **set** / **option**: the tag (`list` / `set` / `option`) then
+>   the element reference.
 > - **map**: `map`; the key reference; the value reference.
 > - **array**: `array`; the element reference; a `u32` dimension count; then each
 >   dimension as `u64`.
@@ -574,6 +589,8 @@ decoded.
 > - **dynamic**: `dynamic`.
 > - **external**: `external`; the `kind` string; then the `metadata` — one byte
 >   `0` for `None`, or `1` then the metadata reference.
+> - **semantic**: `semantic`; the canonical QName string; a `u32` argument
+>   count then each argument reference; then the representation reference.
 >
 > A *reference* is encoded as `concrete` then the referenced `SchemaId` (8 bytes
 > LE) then a `u32` argument count then each argument reference; or, for a type
@@ -587,8 +604,9 @@ decoded.
 > `u32` LE length then its UTF-8 bytes), never as a bare byte, so token framing
 > is unambiguous and identical across implementations.
 
-Everything structural is in the hash; there is nothing non-structural in a
-phon schema to leave out (no doc comments, no annotations travel on the wire).
+Everything affecting structure or semantics is in the hash. Documentation and
+other descriptive annotations are carried separately and never affect a
+`SchemaId`.
 
 Names are part of identity on purpose. phon matches struct fields and enum
 variants by name when translating between two schema versions — that's how a field
@@ -732,12 +750,12 @@ A few things worth calling out:
 
 > r[self-describing.no-extra-kinds]
 >
-> `Dynamic`, `Channel`, `RegionRef`, and `External` have no self-describing
-> tags. A `Dynamic` value simply *is* a self-describing value — it carries
-> whatever tag its actual kind calls for, so it needs no tag of its own.
-> `Channel`, `RegionRef`, and `External` have no self-describing form at all:
-> each requires a schema and an application-owned resolver to interpret, so
-> they appear only in compact mode and never inside a `Dynamic`.
+> `Dynamic`, `Channel`, `Semantic`, and `External` have no self-describing tags.
+> A `Dynamic` value simply *is* a self-describing value — it carries whatever
+> tag its actual structural kind calls for, so it needs no tag of its own.
+> `Channel`, `Semantic`, and `External` have no self-describing form at all:
+> each requires a schema and application-owned interpretation, so they appear
+> only in compact mode and never inside a `Dynamic`.
 
 > r[self-describing.bootstraps-schemas]
 >
@@ -849,6 +867,10 @@ but not how many:
   `Some` — the metadata value encoded compact against that metadata schema;
   nothing follows the handle if `metadata` is `None` (see
   `r[type-system.external]`). The payload itself is out of band.
+- `semantic`: exactly the compact bytes of its `representation`; an available
+  semantic handler may validate, translate, or resolve the represented value but
+  cannot alter its length, alignment, or wire grammar (see
+  `r[type-system.semantic]`)
 - `dynamic`: a complete self-describing value (tag-led, per [Self-describing
   mode](#self-describing-mode)). It is self-delimiting — the tags and embedded
   lengths bound it — so no extra length prefix wraps it; the compact decoder
@@ -904,29 +926,18 @@ long-term storage of arbitrary schema-driven values. This is independent of the
 fixed-shape `phon-storage` aligned and dense profiles, which trade general value
 graphs for stable node or row layouts and specialized random access. Those are
 separate file formats with their own magic, versions, and admission rules; this
-chapter neither supersedes them nor changes their bytes. A durable compact file
-adds metadata to find and validate ordinary compact values without rewriting
-those values into another shape.
+chapter neither supersedes them nor changes their bytes.
 
-The first durable-file revision has four goals:
+The first revision preserves ordinary compact bytes, carries the exact concrete
+writer schemas needed to decode them, permits separately addressable values,
+and validates untrusted structure before exposing borrowed views. It does not
+define mutable files, append journals, signatures, or encrypted payloads.
 
-- preserve the exact compact bytes described above;
-- let a reader recover the writer schema from the file itself;
-- place large values separately without hiding native pointers in the file;
-- validate untrusted file structure once before exposing borrowed views.
+## Semantic region references and authoring
 
-It deliberately does not define mutable files, append journals, compression,
-encryption, signatures, application-specific sections, or producer provenance;
-an application wanting attribution adds an ordinary field to its root type.
-
-## Authoring model
-
-A normal value is still encoded with the ordinary typed PHON API. A caller opts
-into separate placement explicitly by using a PHON region reference in its data
-model. There is no attribute, size threshold, index request, or writer policy
-that silently changes the encoding of an existing type.
-
-The storage choice is visible in the application schema:
+Separate placement is explicit in the application schema. `RegionRef<T>` is the
+binding spelling for the semantic type `phon.region-ref-v1<T>`, whose structural
+representation is `u32`:
 
 ```rust
 struct InlineModule { rows: Vec<Row> }
@@ -934,381 +945,406 @@ struct RegionalModule<'build> { rows: RegionRef<'build, Vec<Row>> }
 ```
 
 `InlineModule` writes the list inside the root. `RegionalModule` writes one
-`u32` in the root and the same ordinary compact `Vec<Row>` bytes in a region
-extent. A builder cannot transform one shape into the other.
+file-local region number in the root and the same ordinary compact `Vec<Row>`
+bytes in a region extent. No attribute, threshold, index request, or build plan
+converts one schema into the other.
 
-The language-neutral builder state machine is register, set one root, freeze a
-plan, count, then write. One possible Rust spelling is:
+The language-neutral builder state machine is reserve/register, set one root,
+freeze a plan, count, then write. Reserving before filling permits self- and
+mutually-referential region graphs:
 
 ```rust
 let mut builder = phon::file::Builder::new();
 let rows = builder.region(&rows_value)?;
+let loop_node = builder.reserve_region::<Node>()?;
+builder.fill_region(loop_node, &Node { next: loop_node })?;
 let root = RegionalModule { rows };
-let plan = builder.plan().region(rows).list_offsets(rows).freeze(&root)?;
-plan.write_to(output)?;
+let file = builder.plan().region(rows).region(loop_node).freeze(&root)?;
+file.write_to(output)?;
 ```
 
-`Builder::region` returns an opaque typed handle branded with that builder. The
-builder retains the immutable typed value through both counting and writing.
-Rust expresses this with a lifetime and invariant brand; Swift and TypeScript
-retain an equivalent hidden owner token and immutable, frozen, or
-version-checked typed value. A handle cannot be publicly constructed from a raw
-integer. A foreign-builder handle, registration after freeze, mutation during
-construction, invalid index target, missing root, or non-repeatable encoder is
-an explicit error; plan errors occur before output is touched.
+Builder handles are opaque, owner-scoped identities, not wire numbers. A handle
+cannot be publicly constructed from an integer or used with another builder.
+Each reserved region is filled exactly once before freeze. Freeze rejects
+dangling references, unfilled regions, unreachable registered regions, invalid
+auxiliary requests, and incompatible semantics before output is touched. Cycles
+and repeated references are valid; admission checks reference bounds without
+recursively resolving the graph.
 
-`BuildPlan` lists every registered region handle exactly once in desired order,
-plus requested derived indexes and digest policy. Handles are stable
-builder-local identities, not wire numbers. Freezing assigns contiguous wire
-region and index numbers and their canonical physical order. Omitting a plan is
-exactly registration order. A plan can order registered extents and choose
-indexes/digests; it cannot inline or outline ordinary fields or otherwise alter
-ordinary compact bytes. A repeated reference may name the same immutable
-region. Every referenced region must exist, every registered region must be
-reachable from the root, and the region-reference graph must be acyclic;
-freezing rejects dangling, unreachable, self-referential, or cyclic graphs
-before sizing.
+The builder retains a transitive immutable snapshot of every root and region
+value through counting and writing. A merely shared reference, shallow freeze,
+or top-level version counter is insufficient when reachable state can mutate.
+Bindings may use immutable value graphs, copy-on-write snapshots, or transitive
+version tokens. Custom encoders additionally contribute their canonical bytes
+to a counting-pass BLAKE3 transcript; the writing pass hashes emitted bytes and
+must match that transcript. Equal byte length alone is not repeatability.
 
-On the wire, `RegionRef<T>` is the `RegionRef` schema kind from
-`r[type-system.region-ref]` and one `u32` region number. Outside a durable file,
-encoding or decoding it requires an application-provided resolver and otherwise
-fails. It never contains a process pointer, Rust `usize`, or byte offset.
-
-The equivalent Swift and TypeScript APIs follow the same contract, not merely
-the same method names: registration returns an opaque owner-scoped handle;
-freezing assigns its wire number; writing retains immutable typed values;
-admission returns an immutable file-scoped resolver; typed access plans
-compatibility before reading an extent. Every binding rejects cross-owner
-handles and surfaces typed failures rather than null or default values.
+Swift and TypeScript expose equivalent owner identity, snapshot, freeze, and
+typed failure semantics. Every binding returns explicit errors for foreign
+handles, double fill, post-freeze registration, missing semantic handlers, and
+write-pass non-repeatability rather than null or default values.
 
 > r[compact.file.explicit-regions]
 >
-> Separate placement is represented by the explicit schema type
-> `RegionRef<T>`. Existing schemas and existing compact values do not acquire
+> Separate placement is represented by the explicit semantic type
+> `phon.region-ref-v1<T>`. Existing schemas and compact values do not acquire
 > file-only behavior from annotations or writer policy.
 
-## File layout
+## File layout and permanent bootstrap
 
-A durable compact file is the following sequence:
+A durable compact file is:
 
 ```text
 +------------------------------+  offset 0
-| self-describing FilePrelude  |
+| self-describing FileEnvelope |
 +------------------------------+
-| zero padding to 16 bytes     |
+| zero padding                 |
 +------------------------------+
-| self-describing schema set   |  extent 0
+| schema bundle extent         |
 +------------------------------+
-| zero padding to 16 bytes     |
+| compact root extent          |
 +------------------------------+
-| compact root value           |  extent 1
+| compact region extents       |
 +------------------------------+
-| zero padding + compact       |
-| region values                |  extents 2..N
-+------------------------------+
-| zero padding + compact       |
-| derived indexes, if any      |
+| named auxiliary extents      |
 +------------------------------+
 ```
 
-Every extent starts at a multiple of 16 bytes. Sixteen is sufficient because
-compact's largest scalar alignment is 16. An extent is not a fixed-size node:
-its size is exactly the number of bytes required by that compact value. Internal
-padding remains the compact padding already specified by
-`r[compact.alignment]`, measured from the start of the extent.
-
-Bytes between extents are zero. Non-zero padding is invalid. Extents may not
-overlap, may not point into the prelude, and must cover the file exactly except
-for their declared zero padding. A reader rejects trailing bytes.
-
-> r[compact.file.one-representation]
->
-> Root and region extents contain ordinary compact values. Decoding an extent
-> with the same writer schema and file resolver produces the same value and
-> consumes the same bytes as decoding that value as a standalone compact
-> message with that resolver. Region extents form a finite acyclic graph rooted
-> at `Root`; resolving a reference is lazy and does not recursively admit it.
-
-## Bootstrap prelude
-
-The file begins with one canonical self-describing PHON value named
-`FilePrelude`. A self-describing decoder can find the end of this value from its
-tags and lengths; no handwritten magic header or prior schema is needed.
-
-The first revision has this exact field order and field types:
+The outer envelope shape is permanent across every file revision:
 
 ```text
-FilePrelude {
-    format: u32,                 // exactly 1
-    file_len: u64,
-    root_schema: u64,            // SchemaId
-    required_features: list<string>,
-    optional_features: list<string>,
-    extents: list<Extent>,
+FileEnvelope {
+    format: u32,
+    body: Dynamic,
 }
-
-Extent {
-    kind: ExtentKind,
-    offset: u64,
-    len: u64,
-    schema: option<u64>,         // SchemaId for compact value extents
-    alignment: u32,              // required file-relative start alignment
-    digest: option<Digest>,
-}
-
-Digest {
-    algorithm: string,           // `blake3-256` in revision 1
-    bytes: bytes,                // exactly 32 bytes for `blake3-256`
-}
-
-ExtentKind = Schemas | Root | Region { number: u32 } | Index { number: u32 }
 ```
 
-The prelude uses the self-describing encodings already specified: struct and
-field names are present, integers use their width-specific tags, lists carry a
-`u32` count, options use their ordinary self-describing form, and each enum has
-exactly one payload value per `r[self-describing.enum-payload]`. A reader must
-check the names, field order, integer widths, enum names, and field count rather
-than decoding this value through the coarse dynamic `Value` model.
+`format` is always the first field with exactly this name and width. `body` is
+one self-describing value whose exact type is selected by `format`. Revision 1
+uses `FilePreludeV1`; an unknown `format` is rejected as unsupported after the
+outer envelope, without guessing the body shape.
 
-The first extent is `Schemas`; the second is `Root`. Region numbers and index
-numbers are contiguous from zero and appear in number order. Extent descriptors
-are in physical offset order, and physical order is exactly `Schemas`, `Root`,
-then the plan-assigned region order, then plan-assigned index order. The plan
-assigns numbers and physical order together; there is no independent byte-order
-permutation. These rules make the prelude canonical and remove the need for a
-second directory format.
+```text
+FilePreludeV1 {
+    file_len: u64,
+    required_features: list<qname>,
+    optional_features: list<qname>,
+    extents: list<ExtentV1>,
+}
 
-`required_features` and `optional_features` are each sorted by UTF-8 byte order
-and contain no duplicates; a feature may not occur in both lists. A feature
-name's meaning is permanent once published. A behavior change uses a new name,
-as the `-v1` suffix anticipates, rather than redefining an existing name.
+ExtentV1 {
+    role: ExtentRoleV1,
+    offset: u64,
+    len: u64,
+    schema: option<SchemaRef>,
+    alignment: u32,
+    digest: option<DigestV1>,
+}
 
-Unknown required features reject the file before any compact extent is decoded.
-Unknown optional features may be ignored only when their named specification
-says that ignoring them preserves the root value. Revision 1 defines one
-optional feature, `list-offsets-v1`, below. Region references are part of format
-revision 1 and therefore need no feature name. Revision 1 does not define a
-feature-name registry; applications minting names must avoid collisions.
+DigestV1 {
+    algorithm: qname,
+    bytes: bytes,
+}
 
-### Format evolution
+ExtentRoleV1 =
+    Schemas
+  | Root
+  | Region { number: u32 }
+  | Aux { name: qname, number: u32 }
+```
 
-`format` versions the fixed bootstrap shape: the fields and field order of
-`FilePrelude`, `Extent`, and `Digest`, and the closed `ExtentKind` enumeration.
-Feature names version capabilities expressible inside that fixed framing, such
-as index payloads or conventions over existing extents. Adding or reordering a
-bootstrap field or adding an extent kind requires a new `format`; adding an
-optional capability representable by format 1 uses a feature name.
+The first extent is `Schemas`; the second is `Root`. Region numbers are
+contiguous from zero and appear next in plan order. Aux extents follow, sorted
+by `(name UTF-8 bytes, number)`, with numbers contiguous from zero per name.
+Descriptors are in physical offset order. Zero-length extents may share an
+offset; role/name/number order is the canonical tie-breaker.
 
-> r[compact.file.format-version]
->
-> Revision 1 readers recognize only `format = 1`. An unrecognized value rejects
-> the file before any extent is decoded, with an error distinct from malformed
-> format-1 structure. A reader must not guess a future bootstrap shape.
+Revision 1 uses `alignment = 16` for every extent. Writers align each start to
+16, readers reject any other declared value, and padding bytes are zero. Extents
+do not overlap, point into the envelope, or leave undeclared gaps; their ranges
+and padding cover exactly `file_len`, with no trailing bytes. A future format
+may generalize alignment with `align_up(cursor, max(16, declared_alignment))`;
+format 1 deliberately has no unused stronger-alignment promise.
+
+Per-role schema invariants are canonical:
+
+| role | `schema` |
+|---|---|
+| `Schemas` | `None` |
+| `Root` | `Some(closed concrete SchemaRef)`; the sole root type authority |
+| `Region` | `Some(closed concrete SchemaRef)` |
+| compact PHON `Aux` | `Some(closed concrete SchemaRef)` |
+| raw feature-defined `Aux` | `None`; its feature defines all bytes |
+
+A closed concrete reference is `SchemaRef::Concrete` with exactly the target
+definition's declared argument count and no reachable unbound `Var`. Bare
+`SchemaId` never identifies an encoded value because it would erase generic
+arguments.
 
 > r[compact.file.bootstrap]
 >
-> A durable reader bootstraps by decoding exactly one typed self-describing
-> `FilePrelude` at offset zero, requiring its declared `file_len` to equal the
-> supplied byte length exactly, and validating every extent before reading the
-> schema set or root value. Both shorter and longer buffers are invalid.
+> A durable reader decodes the permanent `FileEnvelope`, selects the typed body
+> from `format`, requires `file_len` to equal the supplied byte length exactly,
+> and validates every descriptor before reading an extent. Both shorter and
+> longer buffers are invalid.
 
-## Schema set
+## Features and auxiliary extents
 
-The `Schemas` extent is one self-describing PHON list of `Schema` values. It
-contains the complete non-primitive writer-schema closure for the root, all
-regions, and every index payload, sorted by ascending `SchemaId`. Every schema
-uses the canonical self-describing schema encoding of
-`r[self-describing.bootstraps-schemas]`.
+Feature names and Aux names are canonical, fully-qualified QNames whose meanings
+are immutable. Both feature lists are sorted by canonical QName bytes, contain
+no duplicates, and are disjoint.
 
-Admission recomputes every content-derived ID, rejects duplicate IDs, resolves
-every reference, and confirms that `root_schema` and every extent schema occur
-in the closure or are canonical primitives. A closure with missing, mismatched
-(the recomputed `SchemaId` disagrees with the entry), or unreachable members is
-invalid. Requiring exact closure rather than merely a sufficient set keeps file
-identity deterministic.
+An optional feature is, by definition, universally safe for an implementation
+that does not recognize it to ignore without changing the root value. Anything
+else is required. Unknown required features reject admission. Unknown optional
+features leave their named Aux extents structurally visible but semantically
+uninterpreted.
 
-Within the writer file, the `Root` extent is decoded against `root_schema`, each
-`Region` extent is decoded against its descriptor's schema, and each reference
-site's `RegionRef<T>` inner writer schema must equal the target descriptor's
-writer schema. This is file-integrity equality, not a restriction on reader
-schema evolution.
+Each feature specification defines which Aux names satisfy it, required counts,
+target uniqueness, payload schema/raw grammar, and whether its Aux extents
+participate in executable identity, package identity, both, or neither. Merely
+listing a feature does not satisfy it. An Aux extent not owned by a listed
+feature is invalid. At most one Aux `(name, logical target)` pair exists unless
+that feature explicitly defines multiplicity and selection.
 
-> r[compact.file.reader-schema]
+Format revisions change `FileEnvelope.body`'s typed shape. Features add
+capabilities expressible using the existing `ExtentRoleV1::Aux` boundary; they
+never add a hidden fifth role.
+
+> r[compact.file.format-version]
 >
-> `FileView::admit` validates framing, the writer-schema closure, extents,
-> references, digests, and indexes without choosing an application reader type.
-> A typed root or region accessor then accepts a reader descriptor, builds the
-> ordinary writer-to-reader plan of `r[compat.plan-first]` before consuming that
-> extent, and returns a typed incompatibility error when no plan exists. Direct
-> borrowing is available only where that plan and the normal descriptor rules
-> prove it safe; otherwise the accessor constructs or copies the reader value.
-> A decoded region handle is tied to its originating `FileView`; its raw `u32`
-> number is metadata only and has no meaning in another file.
+> `FileEnvelope` is permanent. Revision 1 readers recognize only `format = 1`
+> and reject another value with `UnsupportedFormat` before interpreting `body`.
 
-## Computing offsets without temporary section buffers
+## Schema bundle
 
-The file writer uses the same lowered typed PHON program for sizing and writing:
-
-1. Run each schema, root, region, and requested index through a counting sink.
-   The sink performs the ordinary compact walk but records only the byte count.
-2. Encode the fixed-shape prelude into a counting sink. Its encoded length does
-   not depend on the numeric offset values because self-describing `u64` values
-   are fixed width.
-3. Starting after the prelude, align each extent start to 16 and assign offsets
-   in canonical extent order.
-4. Allocate the final byte buffer once, or reserve the final length in a
-   seekable file.
-5. Encode the prelude and every extent directly into its assigned output range.
-   The writer checks that every program writes exactly the size measured in the
-   first pass.
-
-No root or region is first serialized into a temporary `Vec<u8>` merely to
-discover its size. Opaque/custom encoders used by a typed descriptor must be
-repeatable: the counting pass and writing pass must report and emit the same
-length, or file construction fails.
-
-When digests are requested, the writer hashes each final extent while writing
-it and backpatches the already-sized `Digest.bytes` payload in the prelude.
-Backpatching changes only those reserved bytes and never shifts an extent.
-Revision 1 does not define a digest of the prelude itself; applications that
-need authenticity or a whole-file identity hash the completed file or its
-containing package.
-
-> r[compact.file.direct-write]
->
-> Durable writing sizes with the ordinary lowered compact program, assigns all
-> offsets, then runs that program directly against final output ranges. Sizing
-> must not materialize a dynamic value tree or a temporary encoded extent.
-
-## Optional indexes
-
-An index accelerates access to a compact value but is never the authority for
-that value. A reader may ignore every index and decode the same root and regions
-sequentially. A public builder requests the index with a typed root or region
-handle, not a raw extent number; plan freeze rejects a non-list target.
-
-`list-offsets-v1` indexes one compact list extent. Its compact value is:
+The Schemas extent contains a permanent envelope:
 
 ```text
-ListOffsets {
-    target_extent: u32,
-    element_schema: u64,
-    offsets: list<u64>,
+SchemaBundleEnvelope {
+    format: u32,
+    body: Dynamic,
 }
 ```
 
-`target_extent` is the zero-based index into `FilePrelude.extents`. Admission
-requires that it identify `Root` or `Region`, that the target's top-level writer
-schema is `List<T>`, and that `element_schema` equals `T`'s writer `SchemaId`.
-The `ListOffsets` schema is part of the exact schema closure like every other
-index payload schema.
+Its outer shape is shared by durable files, protocol schema exchange, and
+codegen-emitted schema constants. Revision 1's body carries the exact
+non-primitive closure reachable from every Root, Region, and compact Aux
+`SchemaRef`, sorted by ascending `SchemaId`. Admission recomputes IDs, validates
+generic arity and closure, and rejects duplicate, missing, mismatched, or
+unreachable members.
 
-There is one offset per list element. Each offset is relative to the beginning
-of the target extent and points to the first byte consumed when decoding that
-element, including any alignment padding that belongs to the element. Offsets
-are strictly increasing and less than the target extent length.
+Schema-bundle format 1 reserves a canonical string-table representation so
+repeated type, field, variant, QName, and documentation strings can be interned
+without changing logical schemas or `SchemaId`. The precise encoding is chosen
+from the measurements required below. A later compressed bundle is selected by
+the schema-bundle `format`, not by changing ordinary compact value bytes.
 
-During admission, the reader walks the target list once and verifies every
-offset against the actual compact cursor position. Only then may it expose
-indexed borrowed element access. A false index rejects the index. If the feature
-is listed as optional, the reader may discard that index and continue; if it is
-listed as required, the file is rejected. The typed list view always supports
-sequential iteration; random access reports `IndexUnavailable` when no attested
-index remains rather than changing the decoded type or values.
+`Channel` and `External` schemas are invalid anywhere reachable from Root,
+Region, or Aux in revision 1: their transport-assigned handles are not durable.
+A future required package/resolver feature may define stable identity, target
+validation, lifetime, and ownership for a specific capability semantic; merely
+having a message handler is insufficient.
 
-Other index shapes require separately named feature revisions. An index never
-changes a compact value's schema or bytes.
+## Structural and executable admission
 
-## Admission and borrowed access
+Admission has two explicit states. `StructuralFileView` proves the envelope,
+extent ranges, schema bundle, compact grammars, references, digests, and known
+Aux invariants. It may retain unknown optional Aux names and unknown Semantic
+QNames as inspectable representations. It is not described as executable.
 
-File input is untrusted. Before exposing a borrowed root, region, or indexed
-element, admission must:
+Typed root/region access upgrades the required path to executable status by
+resolving every semantic handler needed by that path and building the ordinary
+writer-to-reader compatibility plan before consuming its compact bytes.
+Compatibility between two Semantic values requires the same semantic QName and
+is delegated to that handler; compatible representations alone do not imply
+semantic compatibility. `T` and `phon.region-ref-v1<T>` are incompatible storage
+shapes.
 
-- bound prelude nesting, strings, feature count, extent count, schema count,
-  total schema bytes, and all allocation work using caller-selected limits;
-- charge every schema/reference visit, hash byte, generic-substitution node,
-  compatibility/lowering node, and index cursor step to caller-selected
-  aggregate work budgets; depth alone is not a work bound;
-- use checked arithmetic for every offset, length, alignment, count, and sum;
-- require every extent alignment to be a non-zero power of two, at least its
-  compact root's natural alignment, and verify `offset % alignment == 0`;
-- verify canonical extent and feature order, zero padding, non-overlap, exact
-  file length, and complete consumption of every self-describing or compact
-  extent;
-- validate the exact schema closure and every region reference;
-- run the ordinary compact hostile-input checks for lengths, depth, UTF-8,
-  enum tags, uniqueness, dimensions, and trailing bytes;
-- verify each present digest before trusting the corresponding extent; and
-- verify indexes against the compact cursor positions they claim to cache.
+Before exposing borrowed values, admission:
 
-Successful admission produces an immutable `FileView<'a>` tied to retained
-input ownership. Before constructing any native pointer, reference, or slice,
-an accessor checked-computes the actual address and byte range; verifies actual
-address alignment, host count conversion, count times element size, host maximum
-slice size, one-allocation containment, initialized host representation, and
-stable backing; and proves the range lies within that retained allocation. If a
-condition is unproven, it copies or converts into aligned retained storage, or
-returns an error. File-relative alignment alone never authorizes a native cast.
+- bounds envelope/schema nesting, strings, extent/schema counts, total decoded
+  schema bytes, decompression output, and all allocation work;
+- charges schema/reference visits, hash bytes, substitutions, compatibility and
+  lowering nodes, semantic-handler work, and index cursor steps to aggregate
+  caller-selected budgets;
+- uses checked arithmetic for every offset, length, count, and sum;
+- verifies canonical role, feature, Aux, padding, and zero-length ordering;
+- validates exact schema closure, concrete references, region-number bounds,
+  and complete consumption of every value;
+- runs ordinary compact hostile-input checks; and
+- reports unknown digest algorithms as `UnsupportedDigest`/unverified, never as
+  successfully verified.
 
-A borrowed `FileView` must be backed by bytes whose contents and mapped length
-cannot change for its lifetime: owned immutable memory, or a platform-specific
-snapshot, seal, or exclusive lease that prevents every write, hole punch,
-resize, and truncation. Read-only page protection, a read-only descriptor,
-pathname permissions, advisory intent, or pre/post metadata checks alone are
-insufficient. If that guarantee cannot be retained, the implementation copies
-into immutable owned storage or rejects borrowed admission.
+A borrowed view retains immutable bytes whose contents and mapped length cannot
+change: owned immutable memory or a platform snapshot, seal, or exclusive lease
+preventing writes, hole punches, resize, and truncation. Read-only mappings,
+descriptors, permissions, advisory intent, or metadata checks alone are not
+sufficient. Otherwise the implementation copies or rejects borrowed admission.
+
+Before constructing a native pointer/reference/slice, an accessor checks the
+actual retained-allocation address and range, host count conversion, element-size
+product, host maximum slice size, one-allocation containment, alignment, and
+initialized host representation. File-relative alignment alone never
+authorizes a native cast.
 
 > r[compact.file.admission]
 >
-> Borrowed durable access is available only through a successful admission
-> result tied to immutable input bytes. Parsing a prelude alone confers no
-> authority to dereference an extent or index.
+> Parsing the envelope grants no dereference authority. Borrowed access requires
+> structural admission tied to immutable retained bytes; semantic execution
+> additionally requires every handler and compatibility plan needed by the
+> accessed path.
 
-## Integrity and trust
+## Direct construction and publication
 
-A present digest names its algorithm. Revision 1 defines `blake3-256`, computed
-over exactly the extent's declared bytes, with exactly 32 digest bytes. An
-unknown algorithm is treated as no digest unless a required feature makes it
-mandatory. A digest establishes equality of the byte string only; it does not
-identify or authorize the producer or prove the extent's kind, schema, index
-target, or feature context. A cache key must include that semantic context,
-length, and digest and must still perform ordinary admission.
+The writer freezes and validates the complete build plan, counts every schema,
+root, region, and Aux payload with the ordinary lowered program, sizes the
+versioned envelopes, assigns aligned ranges, then writes directly into final
+ranges. It does not materialize a dynamic value tree or temporary encoded
+extent merely to discover size.
 
-A missing digest is valid unless an application or required feature demands
-one. Structural and compact validation are mandatory whether or not a digest is
-present. Signatures, encryption, package trust, and key policy belong to the
-application or package containing the PHON file.
+The raw direct writer requires random-access output because revision 1 digest
+bytes and the final `file_len` are backpatched. A forward-only API performs an
+additional complete counting/hash pass before emission or writes to private
+seekable storage first; it never silently buffers each extent separately.
 
-## Determinism
+The counting sink hashes the canonical bytes each program claims it will emit;
+the writing sink hashes actual output and compares both length and digest. A
+same-length mutation is therefore rejected as `NonRepeatable`. Freeze-time plan
+errors occur before output; I/O and repeatability errors may occur after a raw
+destination was modified, and such output is unusable.
 
-Given the same root and region values, exact schema closure, frozen build plan,
-requested indexes, canonical feature sets, and digest choices, a writer emits
-identical bytes. Canonical schema ordering, plan-assigned extent ordering,
-16-byte minimum placement, and zero padding are part of this guarantee. Set and
-map order is part of the typed input value: a durable writer must receive a
-stable iteration order or reject the value as non-repeatable; PHON does not sort
-or alter ordinary compact container bytes for the file path.
+> r[compact.file.direct-write]
+>
+> Durable writing uses the ordinary lowered compact program for counting and
+> final output. Repeatability means byte equality, not merely equal length.
 
-Different frozen plans may assign different region or index orders for the same
-logical data and therefore produce different files. PHON guarantees
-deterministic execution of one plan; it does not claim one physical identity for
-all possible region or index choices.
+A durable snapshot is published atomically: complete in a private location,
+flush contents, atomically replace/rename, and flush the containing directory
+where required. Per-extent digests provide local byte integrity only; they do
+not make a mixed generation transactionally consistent and are never an
+alternative to atomic publication. Non-atomic publication requires a separate
+whole-snapshot commit protocol, which format 1 does not define.
 
-## Crash consistency and publication
+## Named list-offset auxiliary extent
 
-A durable file is published atomically. The writer completes it at a private
-location, flushes file contents, atomically replaces or renames it into the
-published path, and durably flushes the containing directory where the platform
-requires that. PHON's raw writer does not publish; the caller owns these steps
-and must not expose a preallocated or partially written path to readers.
+`phon.list-offsets-v1` is an optional feature and Aux name. Its compact payload
+is:
 
-Reserving final length in a seekable file can leave a torn file with the correct
-length after a crash. Length and structural checks alone do not guarantee
-detection when unwritten bytes happen to form valid compact values. A caller
-that cannot guarantee atomic publication must require a digest for every extent.
-A raw output failure may leave partial bytes; that output must not be published
-or treated as an admitted file.
+```text
+ListOffsetsV1 {
+    target: ListTargetV1,
+    offsets: list<u64>,
+}
+
+ListTargetV1 = Root | Region { number: u32 }
+```
+
+The target's closed concrete writer schema must resolve to `List<T>`; the
+element schema is derived and is not repeated. There is at most one
+`phon.list-offsets-v1` Aux per logical target. Listing the feature with no valid
+payload does not satisfy it.
+
+Each entry is the extent-relative compact decoder cursor immediately before its
+element. There is exactly one entry per element. Offsets are non-decreasing and
+`0 <= offset <= target.len`; equal offsets and `offset == len` are valid for
+zero-sized elements. Admission walks the list once and compares every cursor.
+An invalid optional index is discarded with a diagnostic; an invalid required
+index rejects the file. Sequential iteration is always available, while random
+access without an attested index reports `IndexUnavailable`.
+
+## Integrity and identity
+
+Revision 1 defines `phon.blake3-256-v1`: 32 digest bytes over exactly the
+physical extent bytes. An extent digest proves byte equality only, not role,
+schema, feature target, authorization, or whole-file snapshot identity. Caches
+include semantic context, length, and digest and still perform admission.
+
+Three identities are distinct:
+
+- `SchemaId` covers structural and semantic schema meaning, excluding docs;
+- an application/module executable identity covers Root/Region and explicitly
+  semantic Aux content, excluding strippable docs/debug Aux;
+- an optional package/file identity may cover every physical byte.
+
+## Documentation and inspection
+
+Revision 1 reserves the optional Aux name `phon.schema-docs-v1`. Its eventual
+payload may be added without changing framing. Documentation targets are:
+
+```text
+DocTargetV1 =
+    Definition { schema_id: u64, path: SchemaPathV1 }
+  | Instantiation { schema: SchemaRef, path: SchemaPathV1 }
+
+SchemaPathStepV1 =
+    Field { name: string }
+  | Variant { name: string }
+  | VariantField { name: string }
+  | TupleElement { index: u32 }
+  | TypeParameter { name: string }
+```
+
+Documentation, units, invariants, deprecation text, and source links are
+strippable and excluded from `SchemaId` and executable identity. Editing or
+removing them may change physical/package identity only.
+
+A generic inspector can report envelope and feature versions, extent layout,
+digests, schemas and compatibility, named root/region values, unknown semantic
+QNames with their representations, Aux inventory, reference graphs, and index
+status. Application plugins may add semantics such as Weavy instruction
+disassembly without changing the generic file model.
+
+## Determinism and conformance gate
+
+Given identical immutable values, schema closure, frozen plan, canonical feature
+sets, Aux payloads, schema-bundle encoding choice, and digest choices, a writer
+emits identical bytes. Set/map iteration order is part of the typed input and
+must be stable. Compression is deterministic only if its exact codec revision,
+parameters, dictionary identity, and physical output contract are fixed by the
+schema-bundle format.
+
+### Initial schema-bundle measurements
+
+The current checked-in Weavy format-1 fixture is 2,848 bytes. Its schema
+section is 1,951 bytes (68.5% of the file), despite carrying only a small test
+module. Using each codec's fastest/default-low setting on exactly those schema
+bytes produced:
+
+| representation | bytes | reduction |
+|---|---:|---:|
+| current schema bytes | 1,951 | — |
+| zstd level 1 | 445 | 77.2% |
+| gzip level 1 | 480 | 75.4% |
+| Brotli quality 1 | 490 | 74.9% |
+| LZ4 level 1 | 554 | 71.6% |
+
+The full 2,848-byte fixture similarly became 757 bytes with zstd, 802 with
+gzip, 809 with Brotli, and 994 with LZ4. External-process microbenchmarks on
+this tiny corpus are dominated by startup (roughly 1–2 ms) and do not establish
+in-process decode cost, but the size result is decisive: schema repetition is a
+first-order cost, not a hypothetical optimization.
+
+A printable-string inventory of the schema section found 154 occurrences but
+only 29 unique strings; repeated schema meta-vocabulary (`Concrete`, `Field`,
+`schema`, `required`, and similar names) dominates. A simple canonical string
+table therefore has substantial low-complexity opportunity, but the approximate
+unique-string-plus-u32-reference footprint (797 bytes before table framing) is
+still materially above zstd's 445 bytes. Revision 1 should define deterministic
+interning in schema-bundle format 1 and evaluate a small self-contained entropy
+codec against zstd before freezing bytes. The acceptance report must include
+implementation/code footprint, peak decode memory and work limits, exact output
+determinism, and the burden on tiny/embedded readers—not size alone.
+
+Revision 1 is not stable until at least two independent implementations consume
+the same golden files. Positive vectors cover primitive and concrete-generic
+roots, generic and cyclic regions, repeated references, zero-sized list indexes,
+optional/required Aux, structurally admitted unknown Semantic, stripped docs,
+and digested/undigested files. Negative vectors cover malformed generic arity,
+unbound `Var`, closure errors, region/schema mismatch, invalid region numbers,
+overlap/padding/alignment/order errors, duplicate Aux targets, unsatisfied or
+unknown required features, malformed optional Aux, false list cursors, digest
+mismatch, unavailable durable capabilities, and mixed/torn publication.
 
 ## Relationship to message framing
 
@@ -1450,13 +1486,13 @@ The compatibility algorithm is:
 >
 > Matched fields are compatible only when a rule says so. The same primitive is
 > compatible with itself. The same container kind (list, set, map, option) is
-> compatible when its element types are compatible. A `RegionRef<T>` writer is
-> compatible with a `RegionRef<U>` reader exactly when `T` is compatible with
-> `U`; resolving the reference executes that inner translation plan against the
-> referenced region. `T` and `RegionRef<T>` are different, incompatible storage
-> shapes: compatibility never silently moves an inline value into a region or a
-> region value inline. A tuple is compatible with a tuple of the same arity and
-> pairwise-compatible elements. An array is compatible with an array of
+> compatible when its element types are compatible. Two `Semantic` values are
+> compatible only when they have the same canonical QName and their registered
+> handler builds a semantic compatibility plan; compatible structural
+> representations alone are insufficient. `T` and a semantic wrapping `T` are
+> different types unless that semantic handler explicitly defines a conversion.
+> A tuple is compatible with a tuple of the same arity and pairwise-compatible
+> elements. An array is compatible with an array of
 > compatible element type and identical `dimensions` (shape is part of an
 > array's contract). A tensor is compatible with a tensor of compatible element
 > type and identical `rank` — the dimension sizes are runtime, so they are not a
@@ -1795,12 +1831,13 @@ memory; Swift has its own describing Swift memory. They never cross — like the
 implementation has its own. TypeScript has no descriptors at all; its values are
 objects accessed by property, with no offsets to describe.
 
-`RegionRef<T>` descriptors use an opaque resolver access rather than exposing a
-raw integer as the application value. Encoding asks the active builder to map
-the branded handle to its frozen wire number. Decoding asks the admitted
-`FileView` to construct a file-scoped handle carrying the inner descriptor.
-Rust, Swift, and generated TypeScript accessors preserve this owner identity;
-none materializes region-bearing values through a coarse dynamic tree.
+`Semantic` descriptors use opaque handler access rather than exposing their
+representation as the application value. For `phon.region-ref-v1<T>`, encoding
+asks the active builder to map the branded handle to its frozen `u32`; decoding
+asks the admitted `FileView` to construct a file-scoped handle carrying the
+inner descriptor. Rust, Swift, and generated TypeScript accessors preserve this
+owner identity. Unknown semantics remain structural representations only and
+never materialize through a coarse dynamic tree.
 
 Every node carries its facts in one of two forms:
 
@@ -2116,9 +2153,9 @@ The linear ops, each a stencil-able unit:
   like an external handle.
 - **external** — read/write the transport handle; then, if the schema's
   `metadata` is `Some`, the metadata value as a nested compact sub-program.
-- **region-ref** — read/write one resolver-scoped `u32` region number; the
-  binding-side access consumes or constructs an opaque typed handle tied to the
-  active builder or admitted file.
+- **semantic** — execute the ordinary sub-program for the representation, then
+  invoke the registered semantic handler for validation/translation/resolution;
+  missing handlers are plan-build errors, not dynamic fallback.
 - **skip** (decode only) — decode and discard a writer field by its
   writer-schema sub-program.
 - **default** (decode only) — write a reader default, no wire read.
