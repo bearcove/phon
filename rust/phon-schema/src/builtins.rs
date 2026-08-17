@@ -93,6 +93,19 @@ mod tests {
     use super::*;
     use crate::{schema_bundle_to_bytes, schema_to_bytes};
 
+    fn write_region_ref_schema_golden_if_requested(bytes: &[u8]) {
+        if std::env::var_os("PHON_UPDATE_GOLDEN").is_some() {
+            std::fs::write(
+                concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/testdata/schema-semantic-region-ref-v1.phon"
+                ),
+                bytes,
+            )
+            .unwrap();
+        }
+    }
+
     fn list_builtins() -> Vec<Schema> {
         list_offsets_v1_schemas()
     }
@@ -196,10 +209,10 @@ mod tests {
             schema_id_named(&list_offsets, LIST_OFFSETS_V1_SCHEMA_NAME).as_u64(),
             0xf3bb_a25b_02fc_24f3
         );
+        let region_ref_bytes = schema_to_bytes(&region_ref);
+        write_region_ref_schema_golden_if_requested(&region_ref_bytes);
         assert_eq!(
-            blake3::hash(&schema_to_bytes(&region_ref))
-                .to_hex()
-                .as_str(),
+            blake3::hash(&region_ref_bytes).to_hex().as_str(),
             "5883d9eb48d532a92e363f295e28411edea871296b784ee85d15b3550c87deec"
         );
         assert_eq!(

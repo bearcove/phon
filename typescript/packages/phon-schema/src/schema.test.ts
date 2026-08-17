@@ -127,6 +127,18 @@ describe("parseSchemaBundle against the Rust golden", () => {
   });
 });
 
+describe("legacy single-schema semantic parsing", () => {
+  it("parses a Semantic schema emitted by the Rust self-describing codec", () => {
+    const bytes = new Uint8Array(readFileSync(fileURLToPath(
+      new URL("../../../../rust/phon-schema/testdata/schema-semantic-region-ref-v1.phon", import.meta.url),
+    )));
+    expect(schemaFromBytes(bytes).kind).toMatchObject({
+      kind: "semantic",
+      name: "org.bearcove.phon.region-ref-v1",
+    });
+  });
+});
+
 describe("schemaFromBytes against the Rust corpus", () => {
   const corpus = loadCorpus();
 

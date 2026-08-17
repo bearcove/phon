@@ -44,6 +44,17 @@ import type {
 } from "@bearcove/phon-schema";
 import { MESSAGE_MAX_DEPTH } from "./limits.ts";
 
+/// A semantic schema reached an execution path without an application handler.
+export class MissingSemanticHandler extends Error {
+  readonly semantic: string;
+
+  constructor(semantic: string) {
+    super(`missing semantic handler for '${semantic}'`);
+    this.name = "MissingSemanticHandler";
+    this.semantic = semantic;
+  }
+}
+
 // ============================================================================
 // Public API
 // ============================================================================
@@ -142,8 +153,7 @@ function encodeKind(out: ByteSink, value: Value, kind: SchemaKind, reg: Registry
       writeValueInto(out, value);
       return;
     case "semantic":
-      encodeRef(out, value, kind.representation, reg);
-      return;
+      throw new MissingSemanticHandler(kind.name);
     case "tensor":
     case "channel":
     case "external":
@@ -323,7 +333,7 @@ function decodeKind(r: Reader, kind: SchemaKind, reg: Registry, depth: number): 
     case "dynamic":
       return readValue(r, depth);
     case "semantic":
-      return decodeRef(r, kind.representation, reg, depth + 1);
+      throw new MissingSemanticHandler(kind.name);
     case "tensor":
     case "channel":
     case "external":

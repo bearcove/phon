@@ -1413,6 +1413,16 @@ function decKind(r: Reader, depth: number): SchemaKind {
       else throw new DecodeError(`expected option, got tag 0x${t.toString(16)}`);
       return { kind: "external", external, metadata };
     }
+    case "Semantic": {
+      stBegin(r, 3);
+      fname(r);
+      const name = dStr(r);
+      fname(r);
+      const args = decRefList(r, depth + 1);
+      fname(r);
+      const representation = decRef(r, depth + 1);
+      return { kind: "semantic", name, args, representation };
+    }
     default:
       throw new DecodeError(`unknown SchemaKind variant '${variant}'`);
   }
