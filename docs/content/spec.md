@@ -885,6 +885,296 @@ this for you — declaration order is your lever, and it is also part of the
 schema's identity, so two field orderings are two different (but mutually
 compatible) schemas.
 
+# Durable compact files
+
+Compact values are also the value representation used for long-term storage.
+There is no aligned, dense, or file-only encoding of an ordinary value. A file
+adds enough PHON metadata to find and validate compact values; it does not
+rewrite those values into another shape.
+
+The first durable-file revision has four goals:
+
+- preserve the exact compact bytes described above;
+- let a reader recover the writer schema from the file itself;
+- place large values separately without hiding native pointers in the file;
+- validate untrusted file structure once before exposing borrowed views.
+
+It deliberately does not define mutable files, append journals, compression,
+encryption, signatures, or application-specific sections.
+
+## Authoring model
+
+A normal value is still encoded with the ordinary typed PHON API. A caller opts
+into separate placement explicitly by using a PHON region reference in its data
+model. There is no attribute that silently changes the encoding of `Vec<T>`, a
+struct field, or any other existing type.
+
+In Rust, the authoring shape is:
+
+```rust
+let mut file = phon::file::Builder::new();
+let rows = file.region(&rows);
+let module = Module { rows };
+file.root(&module).write_to(output)?;
+```
+
+`region` returns a typed `RegionRef<T>`. The equivalent Swift and TypeScript
+APIs expose the same two operations: register a value as a region, then write a
+root containing the returned reference. Region numbers are assigned in call
+order, beginning at zero. A writer may provide an explicit physical plan when
+reproducible placement must not depend on call order.
+
+`RegionRef<T>` is an explicit PHON type. In compact bytes it is a `u32` region
+number. Its schema carries the referenced schema `T`, so a reader cannot resolve
+a `RegionRef<Row>` to a region containing another type. Outside a durable file,
+encoding or decoding a region reference requires an application-provided region
+resolver and otherwise fails. It never contains a process pointer, a Rust
+`usize`, or a byte offset.
+
+> r[compact.file.explicit-regions]
+>
+> Separate placement is represented by the explicit schema type
+> `RegionRef<T>`. Existing schemas and existing compact values do not acquire
+> file-only behavior from annotations or writer policy.
+
+## File layout
+
+A durable compact file is the following sequence:
+
+```text
++------------------------------+  offset 0
+| self-describing FilePrelude  |
++------------------------------+
+| zero padding to 16 bytes     |
++------------------------------+
+| self-describing schema set   |  extent 0
++------------------------------+
+| zero padding to 16 bytes     |
++------------------------------+
+| compact root value           |  extent 1
++------------------------------+
+| zero padding + compact       |
+| region values                |  extents 2..N
++------------------------------+
+| zero padding + compact       |
+| derived indexes, if any      |
++------------------------------+
+```
+
+Every extent starts at a multiple of 16 bytes. Sixteen is sufficient because
+compact's largest scalar alignment is 16. An extent is not a fixed-size node:
+its size is exactly the number of bytes required by that compact value. Internal
+padding remains the compact padding already specified by
+`r[compact.alignment]`, measured from the start of the extent.
+
+Bytes between extents are zero. Non-zero padding is invalid. Extents may not
+overlap, may not point into the prelude, and must cover the file exactly except
+for their declared zero padding. A reader rejects trailing bytes.
+
+> r[compact.file.one-representation]
+>
+> Root and region extents contain ordinary compact values. Decoding an extent
+> with the same writer schema produces the same value and consumes the same
+> bytes as decoding that value as a standalone compact message.
+
+## Bootstrap prelude
+
+The file begins with one canonical self-describing PHON value named
+`FilePrelude`. A self-describing decoder can find the end of this value from its
+tags and lengths; no handwritten magic header or prior schema is needed.
+
+The first revision has this exact field order and field types:
+
+```text
+FilePrelude {
+    format: u32,                 // exactly 1
+    file_len: u64,
+    root_schema: u64,            // SchemaId
+    required_features: list<string>,
+    optional_features: list<string>,
+    extents: list<Extent>,
+}
+
+Extent {
+    kind: ExtentKind,
+    offset: u64,
+    len: u64,
+    schema: option<u64>,         // SchemaId for compact value extents
+    alignment: u32,
+    digest: option<bytes>,       // exactly 32 bytes when present
+}
+
+ExtentKind = Schemas | Root | Region { number: u32 } | Index { number: u32 }
+```
+
+The prelude uses the self-describing encodings already specified: struct and
+field names are present, integers use their width-specific tags, lists carry a
+`u32` count, options use their ordinary self-describing form, and each enum has
+exactly one payload value per `r[self-describing.enum-payload]`. A reader must
+check the names, field order, integer widths, enum names, and field count rather
+than decoding this value through the coarse dynamic `Value` model.
+
+The first extent is `Schemas`; the second is `Root`. Region numbers and index
+numbers are contiguous from zero and appear in number order. Extent descriptors
+are in physical offset order. These rules make the prelude canonical and remove
+the need for a second directory format.
+
+Unknown required features reject the file before any compact extent is decoded.
+Unknown optional features may be ignored only when their named specification
+says that ignoring them preserves the root value. Revision 1 defines one
+optional feature, `list-offsets-v1`, below. Region references are part of format
+revision 1 and therefore need no feature name.
+
+> r[compact.file.bootstrap]
+>
+> A durable reader bootstraps by decoding exactly one typed self-describing
+> `FilePrelude` at offset zero, validating its declared `file_len` against the
+> supplied buffer, and validating every extent before reading the schema set or
+> root value.
+
+## Schema set
+
+The `Schemas` extent is one self-describing PHON list of `Schema` values. It
+contains the complete non-primitive writer-schema closure for the root and all
+regions, sorted by ascending `SchemaId`. Every schema uses the canonical
+self-describing schema encoding of `r[self-describing.bootstraps-schemas]`.
+
+Admission recomputes every content-derived ID, rejects duplicate IDs, resolves
+every reference, and confirms that `root_schema` and every extent schema occur
+in the closure or are canonical primitives. A closure with missing, stale, or
+unreachable members is invalid. Requiring exact closure rather than merely a
+sufficient set keeps file identity deterministic.
+
+The `Root` extent is decoded against `root_schema`. Each `Region` extent is
+decoded against its descriptor's schema. The `RegionRef<T>` schema at every
+reference site must match the corresponding region descriptor exactly.
+
+## Computing offsets without temporary section buffers
+
+The file writer uses the same lowered typed PHON program for sizing and writing:
+
+1. Run each schema, root, region, and requested index through a counting sink.
+   The sink performs the ordinary compact walk but records only the byte count.
+2. Encode the fixed-shape prelude into a counting sink. Its encoded length does
+   not depend on the numeric offset values because self-describing `u64` values
+   are fixed width.
+3. Starting after the prelude, align each extent start to 16 and assign offsets
+   in canonical extent order.
+4. Allocate the final byte buffer once, or reserve the final length in a
+   seekable file.
+5. Encode the prelude and every extent directly into its assigned output range.
+   The writer checks that every program writes exactly the size measured in the
+   first pass.
+
+No root or region is first serialized into a temporary `Vec<u8>` merely to
+discover its size. Opaque/custom encoders used by a typed descriptor must be
+repeatable: the counting pass and writing pass must report and emit the same
+length, or file construction fails.
+
+When digests are requested, the writer hashes each final extent while writing
+it and backpatches the fixed 32-byte digest payload in the already-sized
+prelude. Backpatching changes only those reserved bytes and never shifts an
+extent. Revision 1 does not define a digest of the prelude itself; applications
+that need authenticity or a whole-file identity hash the completed file or its
+containing package.
+
+> r[compact.file.direct-write]
+>
+> Durable writing sizes with the ordinary lowered compact program, assigns all
+> offsets, then runs that program directly against final output ranges. Sizing
+> must not materialize a dynamic value tree or a temporary encoded extent.
+
+## Optional indexes
+
+An index accelerates access to a compact value but is never the authority for
+that value. A reader may ignore every index and decode the same root and regions
+sequentially.
+
+`list-offsets-v1` indexes one compact list extent. Its compact value is:
+
+```text
+ListOffsets {
+    target_extent: u32,
+    element_schema: u64,
+    offsets: list<u64>,
+}
+```
+
+There is one offset per list element. Each offset is relative to the beginning
+of the target extent and points to the first byte consumed when decoding that
+element, including any alignment padding that belongs to the element. Offsets
+are strictly increasing and less than the target extent length.
+
+During admission, the reader walks the target list once and verifies every
+offset against the actual compact cursor position. Only then may it expose
+indexed borrowed element access. A false index rejects the index. If the feature
+is listed as optional, the reader may discard that index and continue; if it is
+listed as required, the file is rejected.
+
+Other index shapes require separately named feature revisions. An index never
+changes a compact value's schema or bytes.
+
+## Admission and borrowed access
+
+File input is untrusted. Before exposing a borrowed root, region, or indexed
+element, admission must:
+
+- bound prelude nesting, strings, feature count, extent count, schema count,
+  total schema bytes, and all allocation work using caller-selected limits;
+- use checked arithmetic for every offset, length, alignment, count, and sum;
+- verify canonical extent order, zero padding, non-overlap, exact file length,
+  and complete consumption of every self-describing or compact extent;
+- validate the exact schema closure and every region reference;
+- run the ordinary compact hostile-input checks for lengths, depth, UTF-8,
+  enum tags, uniqueness, dimensions, and trailing bytes;
+- verify each present digest before trusting the corresponding extent; and
+- verify indexes against the compact cursor positions they claim to cache.
+
+Successful admission produces an immutable `FileView<'a>` tied to the lifetime
+of the input bytes or memory mapping. Its accessors return borrowed compact
+views or typed values according to the normal descriptor rules. No file offset
+becomes a native pointer until the checked range has been proven to lie within
+the admitted mapping.
+
+Admission is invalidated if the underlying file can change. A memory-mapped
+caller must map an immutable snapshot or otherwise hold an operating-system
+guarantee that the bytes cannot be modified for the lifetime of `FileView`.
+
+> r[compact.file.admission]
+>
+> Borrowed durable access is available only through a successful admission
+> result tied to immutable input bytes. Parsing a prelude alone confers no
+> authority to dereference an extent or index.
+
+## Integrity and trust
+
+An extent digest is BLAKE3-256 over exactly the extent's declared bytes. It
+detects accidental corruption and wrong cache contents. It does not identify or
+authorize the producer. Signatures, encryption, package trust, and key policy
+belong to the application or package containing the PHON file.
+
+A missing digest is valid unless an application or required feature demands
+one. Structural and compact validation are mandatory whether or not a digest is
+present.
+
+## Determinism
+
+Given the same root and region values, exact schema closure, region numbering,
+requested indexes, feature lists, and digest choices, a writer emits identical
+bytes. Canonical schema ordering, extent ordering, 16-byte placement, and zero
+padding are part of this guarantee.
+
+Different explicit physical plans may produce different files for the same
+logical data. PHON guarantees deterministic execution of one plan; it does not
+claim that all possible region or index choices have one physical identity.
+
+## Relationship to message framing
+
+Durable compact files do not replace transport framing. A transport still owns
+message boundaries, multiplexing, fragmentation, and operational size policy.
+The durable prelude is used only when the caller explicitly asks PHON to create
+or open a long-lived file.
+
 ## Why both modes share almost everything
 
 The two modes differ in exactly one axis: whether the kind is known from a tag
