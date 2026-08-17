@@ -10,6 +10,7 @@
 //! "Self-describing mode", and `r[crates.concern-separation]`.
 
 // r[impl crates.concern-separation]
+pub mod builtins;
 pub mod bytes;
 pub mod identity;
 pub mod qualified_name;
@@ -27,6 +28,10 @@ pub mod value {
     pub use facet_value::Value;
 }
 
+pub use builtins::{
+    LIST_OFFSETS_V1_NAME, LIST_OFFSETS_V1_SCHEMA_NAME, LIST_TARGET_V1_SCHEMA_NAME,
+    REGION_REF_V1_NAME, list_offsets_aux_number, list_offsets_v1_schemas, region_ref_v1_schema,
+};
 pub use bytes::{DecodeError, Reader};
 pub use identity::{primitive_id, recursive_schema_ids, resolve_ids};
 pub use qualified_name::{
