@@ -227,6 +227,16 @@ fn validate_kind_refs(
             }
             Ok(())
         }
+        SchemaKind::Semantic {
+            args,
+            representation,
+            ..
+        } => {
+            for argument in args {
+                validate_ref(argument, provided, primitives)?;
+            }
+            validate_ref(representation, provided, primitives)
+        }
     }
 }
 
@@ -303,6 +313,16 @@ fn validate_fixed_array_caps(kind: &SchemaKind, reg: &Registry) -> Result<()> {
                 validate_fixed_array_ref(metadata)?;
             }
             Ok(())
+        }
+        SchemaKind::Semantic {
+            args,
+            representation,
+            ..
+        } => {
+            for argument in args {
+                validate_fixed_array_ref(argument)?;
+            }
+            validate_fixed_array_ref(representation)
         }
     }
 }
@@ -685,6 +705,7 @@ fn encode_kind(value: &Value, kind: &SchemaKind, reg: &Registry, out: &mut Vec<u
         SchemaKind::Tensor { .. } => Err(CompactError::Unsupported("tensor")),
         SchemaKind::Channel { .. } => Err(CompactError::Unsupported("channel")),
         SchemaKind::External { .. } => Err(CompactError::Unsupported("external")),
+        SchemaKind::Semantic { .. } => Err(CompactError::Unsupported("semantic")),
     }
 }
 
@@ -868,6 +889,18 @@ fn substitute_kind(kind: &SchemaKind, params: &[String], args: &[SchemaRef]) -> 
             kind: kind.clone(),
             metadata: metadata.as_ref().map(|r| substitute_ref(r, params, args)),
         },
+        SchemaKind::Semantic {
+            name,
+            args: semantic_args,
+            representation,
+        } => SchemaKind::Semantic {
+            name: name.clone(),
+            args: semantic_args
+                .iter()
+                .map(|reference| substitute_ref(reference, params, args))
+                .collect(),
+            representation: substitute_ref(representation, params, args),
+        },
     }
 }
 
@@ -1024,6 +1057,7 @@ fn decode_kind(r: &mut Reader, kind: &SchemaKind, reg: &Registry, depth: usize) 
         SchemaKind::Tensor { .. } => Err(CompactError::Unsupported("tensor")),
         SchemaKind::Channel { .. } => Err(CompactError::Unsupported("channel")),
         SchemaKind::External { .. } => Err(CompactError::Unsupported("external")),
+        SchemaKind::Semantic { .. } => Err(CompactError::Unsupported("semantic")),
     }
 }
 

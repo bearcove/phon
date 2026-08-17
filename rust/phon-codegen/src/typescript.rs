@@ -247,6 +247,7 @@ PRIMITIVES.map(([id, tag]) => ({ id: BigInt(`0x${id}`), tag })),\n);\n\n",
                 let inner: Vec<String> = elements.iter().map(|e| self.render_ref(e)).collect();
                 format!("[{}]", inner.join(", "))
             }
+            SchemaKind::Semantic { representation, .. } => self.render_ref(representation),
             SchemaKind::Dynamic => "unknown".to_string(),
             SchemaKind::Primitive(p) => primitive_ts(*p).to_string(),
             SchemaKind::Tensor { .. }

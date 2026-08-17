@@ -14,6 +14,7 @@ pub mod bytes;
 pub mod identity;
 pub mod qualified_name;
 pub mod schema;
+pub mod schema_bundle;
 pub mod selfdescribing;
 
 /// phon's dynamic value. In Rust this *is* `facet_value::Value`, re-exported
@@ -35,6 +36,9 @@ pub use qualified_name::{
 pub use schema::{
     ChannelDirection, Field, Primitive, Schema, SchemaId, SchemaKind, SchemaRef, Variant,
     VariantPayload,
+};
+pub use schema_bundle::{
+    SchemaBundle, SchemaBundleLimits, schema_bundle_from_bytes, schema_bundle_to_bytes,
 };
 pub use selfdescribing::{
     DecodeLimits, EncodeError, extended_from_string, extended_to_string, read_value,
@@ -141,5 +145,220 @@ mod qualified_name_tests {
                 got: 0x10
             })
         ));
+    }
+}
+
+#[cfg(test)]
+mod schema_bundle_tests {
+    use super::*;
+
+    fn point_schema() -> Schema {
+        resolve_ids(vec![Schema {
+            id: SchemaId::from_raw(1),
+            type_params: Vec::new(),
+            kind: SchemaKind::Struct {
+                name: "Point".to_string(),
+                fields: vec![Field {
+                    name: "x".to_string(),
+                    schema: SchemaRef::concrete(primitive_id(Primitive::U32)),
+                    required: true,
+                }],
+            },
+        }])
+        .remove(0)
+    }
+
+    fn write_point_golden_if_requested(bytes: &[u8]) {
+        if std::env::var_os("PHON_UPDATE_GOLDEN").is_some() {
+            std::fs::write(
+                concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/testdata/schema-bundle-point-v1.phon"
+                ),
+                bytes,
+            )
+            .unwrap();
+        }
+    }
+
+    #[test]
+    fn schema_bundle_v1_roundtrips_byte_identically() {
+        let bytes = schema_bundle_to_bytes(&[point_schema()]).unwrap();
+        let bundle = schema_bundle_from_bytes(&bytes, SchemaBundleLimits::default()).unwrap();
+        assert_eq!(bundle.schemas(), &[point_schema()]);
+        assert_eq!(schema_bundle_to_bytes(bundle.schemas()).unwrap(), bytes);
+    }
+
+    #[test]
+    fn schema_bundle_v1_rejects_noncanonical_string_table() {
+        let bytes = schema_bundle_to_bytes(&[point_schema()]).unwrap();
+        let point = bytes
+            .windows(5)
+            .position(|window| window == b"Point")
+            .expect("Point string");
+        let mut corrupt = bytes.clone();
+        corrupt[point] = b'Z';
+        assert!(schema_bundle_from_bytes(&corrupt, SchemaBundleLimits::default()).is_err());
+    }
+
+    #[test]
+    fn schema_bundle_v1_rejects_every_truncation() {
+        let bytes = schema_bundle_to_bytes(&[point_schema()]).unwrap();
+        for end in 0..bytes.len() {
+            assert!(
+                schema_bundle_from_bytes(&bytes[..end], SchemaBundleLimits::default()).is_err(),
+                "accepted truncation at byte {end}"
+            );
+        }
+    }
+
+    #[test]
+    fn schema_bundle_v1_rejects_unknown_version_tag_wrong_id_and_trailing_bytes() {
+        let bytes = schema_bundle_to_bytes(&[point_schema()]).unwrap();
+
+        let mut wrong_version = bytes.clone();
+        wrong_version[8..12].copy_from_slice(&2_u32.to_le_bytes());
+        assert!(schema_bundle_from_bytes(&wrong_version, SchemaBundleLimits::default()).is_err());
+
+        let mut unknown_tag = bytes.clone();
+        unknown_tag[12] = 0xff;
+        assert!(schema_bundle_from_bytes(&unknown_tag, SchemaBundleLimits::default()).is_err());
+
+        let mut wrong_id = bytes.clone();
+        let id = point_schema().id.as_u64().to_le_bytes();
+        let id_offset = wrong_id
+            .windows(id.len())
+            .position(|window| window == id)
+            .unwrap();
+        wrong_id[id_offset] ^= 1;
+        assert!(schema_bundle_from_bytes(&wrong_id, SchemaBundleLimits::default()).is_err());
+
+        let mut trailing = bytes;
+        trailing.push(0);
+        assert!(matches!(
+            schema_bundle_from_bytes(&trailing, SchemaBundleLimits::default()),
+            Err(DecodeError::TrailingBytes(1))
+        ));
+    }
+
+    #[test]
+    fn schema_bundle_v1_enforces_total_and_owned_byte_limits() {
+        let bytes = schema_bundle_to_bytes(&[point_schema()]).unwrap();
+        let limits = SchemaBundleLimits {
+            max_total_bytes: bytes.len() - 1,
+            ..SchemaBundleLimits::default()
+        };
+        assert!(matches!(
+            schema_bundle_from_bytes(&bytes, limits),
+            Err(DecodeError::OwnedBytesLimitExceeded { .. })
+        ));
+
+        let limits = SchemaBundleLimits {
+            max_owned_bytes: 5,
+            ..SchemaBundleLimits::default()
+        };
+        assert!(matches!(
+            schema_bundle_from_bytes(&bytes, limits),
+            Err(DecodeError::OwnedBytesLimitExceeded { .. })
+        ));
+    }
+
+    #[test]
+    fn schema_bundle_v1_rejects_duplicate_ids_and_invalid_reference_closure() {
+        let point = point_schema();
+        assert!(matches!(
+            schema_bundle_to_bytes(&[point.clone(), point.clone()]),
+            Err(DecodeError::Malformed("duplicate schema id"))
+        ));
+
+        let missing = resolve_ids(vec![Schema {
+            id: SchemaId::from_raw(1),
+            type_params: Vec::new(),
+            kind: SchemaKind::List {
+                element: SchemaRef::concrete(SchemaId::from_raw(0xdead_beef)),
+            },
+        }]);
+        assert!(matches!(
+            schema_bundle_to_bytes(&missing),
+            Err(DecodeError::Malformed("missing schema reference"))
+        ));
+    }
+
+    #[test]
+    fn schema_bundle_v1_rejects_generic_and_semantic_contract_mismatches() {
+        let generic = resolve_ids(vec![
+            Schema {
+                id: SchemaId::from_raw(1),
+                type_params: vec!["T".to_string()],
+                kind: SchemaKind::Struct {
+                    name: "Box".to_string(),
+                    fields: vec![Field {
+                        name: "value".to_string(),
+                        schema: SchemaRef::var("T"),
+                        required: true,
+                    }],
+                },
+            },
+            Schema {
+                id: SchemaId::from_raw(2),
+                type_params: Vec::new(),
+                kind: SchemaKind::List {
+                    element: SchemaRef::concrete(SchemaId::from_raw(1)),
+                },
+            },
+        ]);
+        assert!(matches!(
+            schema_bundle_to_bytes(&generic),
+            Err(DecodeError::Malformed("schema argument arity"))
+        ));
+
+        let semantic = resolve_ids(vec![Schema {
+            id: SchemaId::from_raw(1),
+            type_params: Vec::new(),
+            kind: SchemaKind::Semantic {
+                name: taxon::SemanticName::try_from("Org.Invalid").unwrap(),
+                args: Vec::new(),
+                representation: SchemaRef::concrete(primitive_id(Primitive::U32)),
+            },
+        }]);
+        assert!(matches!(
+            schema_bundle_to_bytes(&semantic),
+            Err(DecodeError::Malformed("qualified name"))
+        ));
+    }
+
+    #[test]
+    fn schema_bundle_v1_admits_recursive_cycle_closure() {
+        let recursive = resolve_ids(vec![Schema {
+            id: SchemaId::from_raw(7),
+            type_params: Vec::new(),
+            kind: SchemaKind::Struct {
+                name: "Node".to_string(),
+                fields: vec![Field {
+                    name: "next".to_string(),
+                    schema: SchemaRef::concrete(SchemaId::from_raw(7)),
+                    required: false,
+                }],
+            },
+        }]);
+        let bytes = schema_bundle_to_bytes(&recursive).unwrap();
+        assert_eq!(
+            schema_bundle_from_bytes(&bytes, SchemaBundleLimits::default())
+                .unwrap()
+                .schemas(),
+            recursive
+        );
+    }
+
+    #[test]
+    fn schema_bundle_v1_bytes_are_golden() {
+        const GOLDEN: &[u8] = include_bytes!("../testdata/schema-bundle-point-v1.phon");
+        let bytes = schema_bundle_to_bytes(&[point_schema()]).unwrap();
+        write_point_golden_if_requested(&bytes);
+        assert_eq!(bytes, GOLDEN);
+        assert_eq!(
+            blake3::hash(GOLDEN).to_hex().as_str(),
+            "be73e4dfa8001fbe86bcc910d60d0c70d746ffb7ad888c3f994b1ade50637411"
+        );
     }
 }

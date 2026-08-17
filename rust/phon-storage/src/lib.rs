@@ -759,7 +759,8 @@ impl Encoder<'_> {
             | SchemaKind::Tensor { .. }
             | SchemaKind::Channel { .. }
             | SchemaKind::Dynamic
-            | SchemaKind::External { .. } => {
+            | SchemaKind::External { .. }
+            | SchemaKind::Semantic { .. } => {
                 return Err(AlignedError::Unsupported("schema kind in aligned profile"));
             }
         }
@@ -1063,7 +1064,8 @@ impl<'a> AlignedDocument<'a> {
             | SchemaKind::Tensor { .. }
             | SchemaKind::Channel { .. }
             | SchemaKind::Dynamic
-            | SchemaKind::External { .. } => {
+            | SchemaKind::External { .. }
+            | SchemaKind::Semantic { .. } => {
                 Err(AlignedError::Unsupported("schema kind in aligned profile"))
             }
         }

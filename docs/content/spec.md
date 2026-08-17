@@ -1088,21 +1088,27 @@ ExtentRoleV1 =
     Schemas
   | Root
   | Region { number: u32 }
-  | Aux { name: QualifiedName, number: u32 }
+  | Aux {
+        feature: QualifiedName,
+        name: QualifiedName,
+        number: u32,
+    }
 ```
 
 The first extent is `Schemas`; the second is `Root`. Region numbers are
 contiguous from zero and appear next in plan order. Aux extents follow, sorted
-by `(name UTF-8 bytes, number)`, with numbers contiguous from zero per name.
+by `(feature UTF-8 bytes, name UTF-8 bytes, number)`, with numbers contiguous
+from zero per `(feature, name)`. An unaware reader can therefore associate every
+Aux with its listed feature without knowing that feature's specification.
 Descriptors are in physical offset order. Zero-length extents may share an
-offset; role/name/number order is the canonical tie-breaker.
+offset; role/feature/name/number order is the canonical tie-breaker.
 
-Revision 1 uses `alignment = 16` for every extent. Writers align each start to
-16, readers reject any other declared value, and padding bytes are zero. Extents
-do not overlap, point into the envelope, or leave undeclared gaps; their ranges
-and padding cover exactly `file_len`, with no trailing bytes. A future format
-may generalize alignment with `align_up(cursor, max(16, declared_alignment))`;
-format 1 deliberately has no unused stronger-alignment promise.
+Revision 1 uses `alignment = 16` for every extent. Placement is minimal:
+`Schemas.offset = align_up(encoded_envelope_len, 16)`; each later extent offset
+is `align_up(previous.offset + previous.len, 16)`; and `file_len` is exactly the
+last extent's end. Writers emit zero padding only for those alignments. Readers
+reject any other declared alignment, non-minimal offset, nonzero padding,
+overlap, trailing bytes, or undeclared gap.
 
 Per-role schema invariants are canonical:
 
@@ -1128,26 +1134,23 @@ arguments.
 
 ## Features and auxiliary extents
 
-Feature names and Aux names are canonical PHON `QualifiedName` values whose
-meanings are immutable. Both feature lists are sorted by canonical name bytes,
-contain no duplicates, and are disjoint.
+Feature names and Aux feature/name fields are canonical PHON `QualifiedName`
+values whose meanings are immutable. Both feature lists are sorted by canonical
+name bytes, contain no duplicates, and are disjoint.
 
 An optional feature is, by definition, universally safe for an implementation
 that does not recognize it to ignore without changing the root value. Anything
-else is required. Unknown required features reject admission. Unknown optional
-features leave their named Aux extents structurally visible but semantically
-uninterpreted.
+else is required. Unknown required features reject admission. Every Aux embeds
+its owning `feature`; that feature MUST appear in exactly one feature list. An
+unknown optional feature leaves its Aux extents structurally visible but
+semantically uninterpreted. An Aux naming an absent feature is invalid.
 
-Each feature specification defines which Aux names satisfy it, required counts,
-target uniqueness, payload schema/raw grammar, and whether its Aux extents
-participate in executable identity, package identity, both, or neither. Merely
-listing a feature does not satisfy it. An Aux extent not owned by a listed
-feature is invalid. At most one Aux `(name, logical target)` pair exists unless
-that feature explicitly defines multiplicity and selection.
-
-Format revisions change `FileEnvelope.body`'s typed shape. Features add
-capabilities expressible using the existing `ExtentRoleV1::Aux` boundary; they
-never add a hidden fifth role.
+Each known feature specification defines its Aux `name` values, required counts,
+logical-target uniqueness, payload schema/raw grammar, and identity role.
+Merely listing a feature does not satisfy it. At most one Aux `(feature, name,
+logical target)` exists unless that feature explicitly defines multiplicity and
+selection. Format revisions change `FileEnvelope.body`; features use only the
+existing `Aux` boundary and never add a hidden fifth role.
 
 > r[compact.file.format-version]
 >
@@ -1160,59 +1163,67 @@ The Schemas extent contains a permanent envelope:
 
 ```text
 SchemaBundleEnvelope {
+    magic: bytes[8] = "PHONSCM1",
     format: u32,
     body: Dynamic,
 }
+SchemaBundleV1 {
+    strings: list<string>,
+    schemas: list<InternedSchemaV1>,
+}
 ```
 
-Its outer shape is shared by durable files, protocol schema exchange, and
-codegen-emitted schema constants. Revision 1's body carries the exact
-non-primitive closure reachable from every Root, Region, and compact Aux
-`SchemaRef`, sorted by ascending `SchemaId`. Admission recomputes IDs, validates
-generic arity and closure, and rejects duplicate, missing, mismatched, or
-unreachable members.
+The outer envelope is shared by durable files, protocol schema exchange, and
+codegen-emitted schema constants. `strings` contains every non-empty string
+occurring in the encoded schemas: type parameters, struct/field/variant names,
+External kinds, Semantic names, and `Var` names. It is sorted by raw UTF-8 bytes
+and contains no duplicates. An `InternedSchemaV1` is the ordinary
+self-describing `Schema` shape except each such string value is replaced by a
+self-describing `u32` index into `strings`. Closed grammar tokens such as struct
+field labels, SchemaRef variant names, and primitive tags are not interned.
 
-Schema-bundle format 1 reserves a canonical string-table representation so
-repeated type, field, variant, qualified-name, and documentation strings can be interned
-without changing logical schemas or `SchemaId`. The precise encoding is chosen
-from the measurements required below. A later compressed bundle is selected by
-the schema-bundle `format`, not by changing ordinary compact value bytes.
+`schemas` is the exact non-primitive closure reachable from every Root, Region,
+and compact Aux `SchemaRef`, sorted by ascending `SchemaId`. Format 1 is
+uncompressed. Admission reconstructs each ordinary `Schema`, recomputes IDs,
+validates generic arity and closure, and rejects noncanonical table order,
+duplicate/unused/out-of-range strings, duplicate/missing/mismatched/unreachable
+schemas, or trailing bytes. A single-schema codegen constant is a one-member
+bundle, not a bare `Schema` value.
 
 `Channel` and `External` schemas are invalid anywhere reachable from Root,
 Region, or Aux in revision 1: their transport-assigned handles are not durable.
-A future required package/resolver feature may define stable identity, target
-validation, lifetime, and ownership for a specific capability semantic; merely
-having a message handler is insufficient.
 
 ## Structural and executable admission
 
-Admission has two explicit states. `StructuralFileView` proves the envelope,
-extent ranges, schema bundle, compact grammars, references, digests, and known
-Aux invariants. It may retain unknown optional Aux names and unknown Semantic
-qualified names as inspectable representations. It is not described as executable.
+Admission has two explicit states. `StructuralFileView` proves common framing,
+schema closure, compact grammars, reference integrity, and records per-extent
+integrity status. It may retain unknown optional Aux names and unknown Semantic
+qualified names as inspectable representations. It is not executable.
+
+The failure boundary is exact:
+
+| failure | optional Aux | required Aux |
+|---|---|---|
+| envelope/range/overlap/order/alignment/padding | reject file | reject file |
+| descriptor schema or common closure invalid | reject file | reject file |
+| feature-local payload or derived cursor invalid | discard Aux + diagnostic | reject file |
+| declared known digest mismatch | reject file | reject file |
+| unknown digest algorithm | retain as unverified, subject to caller policy | reject when the feature requires verification |
 
 Typed root/region access upgrades the required path to executable status by
-resolving every semantic handler needed by that path and building the ordinary
-writer-to-reader compatibility plan before consuming its compact bytes.
-Compatibility between two Semantic values requires the same qualified name and
-is delegated to that handler; compatible representations alone do not imply
-semantic compatibility. `T` and `org.bearcove.phon.region-ref-v1<T>` are incompatible storage
-shapes.
+resolving every semantic handler and compatibility plan before consuming bytes.
+Compatibility between Semantic values requires the same qualified name and its
+handler; representation compatibility alone is insufficient.
 
-Before exposing borrowed values, admission:
-
-- bounds envelope/schema nesting, strings, extent/schema counts, total decoded
-  schema bytes, decompression output, and all allocation work;
-- charges schema/reference visits, hash bytes, substitutions, compatibility and
-  lowering nodes, semantic-handler work, and index cursor steps to aggregate
-  caller-selected budgets;
-- uses checked arithmetic for every offset, length, count, and sum;
-- verifies canonical role, feature, Aux, padding, and zero-length ordering;
-- validates exact schema closure, concrete references, region-number bounds,
-  and complete consumption of every value;
-- runs ordinary compact hostile-input checks; and
-- reports unknown digest algorithms as `UnsupportedDigest`/unverified, never as
-  successfully verified.
+Before exposing borrowed values, admission bounds all nesting/count/string/
+allocation/decompression work; charges aggregate visits and handler/index work;
+uses checked arithmetic; validates canonical descriptor and zero-length order;
+validates exact schema closure and concrete references; requires every Region
+to be reachable from Root; and, for each
+`org.bearcove.phon.region-ref-v1<T>`, requires the referenced Region descriptor's
+closed writer `SchemaRef` to equal resolved `T` exactly, not merely be
+compatible. It then validates region bounds, complete value consumption, and
+ordinary compact hostile-input rules.
 
 A borrowed view retains immutable bytes whose contents and mapped length cannot
 change: owned immutable memory or a platform snapshot, seal, or exclusive lease
@@ -1235,22 +1246,21 @@ authorizes a native cast.
 
 ## Direct construction and publication
 
-The writer freezes and validates the complete build plan, counts every schema,
-root, region, and Aux payload with the ordinary lowered program, sizes the
-versioned envelopes, assigns aligned ranges, then writes directly into final
-ranges. It does not materialize a dynamic value tree or temporary encoded
-extent merely to discover size.
+The reference writer freezes and validates the complete plan, then performs one
+count-and-hash pass over every schema, root, region, and Aux payload with the
+ordinary lowered program. That pass determines every payload length and
+expected digest. It encodes the final envelopes to determine their exact size,
+assigns the minimal aligned ranges above, computes `file_len`, and writes the
+final envelope, padding, and extents forward exactly once. No digest or length
+backpatch is required, so the reference algorithm supports a forward-only sink.
 
-The raw direct writer requires random-access output because revision 1 digest
-bytes and the final `file_len` are backpatched. A forward-only API performs an
-additional complete counting/hash pass before emission or writes to private
-seekable storage first; it never silently buffers each extent separately.
-
-The counting sink hashes the canonical bytes each program claims it will emit;
-the writing sink hashes actual output and compares both length and digest. A
-same-length mutation is therefore rejected as `NonRepeatable`. Freeze-time plan
-errors occur before output; I/O and repeatability errors may occur after a raw
-destination was modified, and such output is unusable.
+During final emission the writing sink hashes actual bytes and compares every
+length and digest with the count-and-hash transcript. Same-length mutation is
+`NonRepeatable`. Implementations may use private seekable storage or additional
+passes but MUST produce identical bytes and MUST NOT silently materialize a
+dynamic value tree or temporary encoded extent merely to discover size.
+Freeze-time errors occur before output; I/O and repeatability errors may occur
+after a raw destination was modified, and such output is unusable.
 
 > r[compact.file.direct-write]
 >
@@ -1261,36 +1271,40 @@ A durable snapshot is published atomically: complete in a private location,
 flush contents, atomically replace/rename, and flush the containing directory
 where required. Per-extent digests provide local byte integrity only; they do
 not make a mixed generation transactionally consistent and are never an
-alternative to atomic publication. Non-atomic publication requires a separate
-whole-snapshot commit protocol, which format 1 does not define.
+alternative to atomic publication.
 
 ## Named list-offset auxiliary extent
 
-`org.bearcove.phon.list-offsets-v1` is an optional feature and Aux name. Its compact payload
-is:
+`org.bearcove.phon.list-offsets-v1` is an optional feature. Its Aux name is the
+same qualified name, and its compact payload uses these exact canonical schemas:
 
 ```text
-ListOffsetsV1 {
-    target: ListTargetV1,
-    offsets: list<u64>,
-}
+ListTargetV1 =
+    Root = 0
+  | Region = 1 (newtype u32)
 
-ListTargetV1 = Root | Region { number: u32 }
+ListOffsetsV1 {
+    target: ListTargetV1, // required
+    offsets: list<u64>,   // required
+}
 ```
 
+The exact schema names are `org.bearcove.phon.ListTargetV1` and
+`org.bearcove.phon.ListOffsetsV1`; field/variant spelling, order, required flags,
+indices, and payload shapes above are identity input. The schema bundle carries
+their computed canonical `SchemaId`s. Aux numbers are Root first (zero), then
+Regions in ascending region number, so numbering is independent of registration
+order.
+
 The target's closed concrete writer schema must resolve to `List<T>`; the
-element schema is derived and is not repeated. There is at most one
-`org.bearcove.phon.list-offsets-v1` Aux per logical target. Listing the feature with no valid
-payload does not satisfy it.
-
-Each entry is the extent-relative compact decoder cursor immediately before its
-element. There is exactly one entry per element. Offsets are non-decreasing and
-`0 <= offset <= target.len`; equal offsets and `offset == len` are valid for
-zero-sized elements. Admission walks the list once and compares every cursor.
-An invalid optional index is discarded with a diagnostic; an invalid required
-index rejects the file. Sequential iteration is always available, while random
-access without an attested index reports `IndexUnavailable`.
-
+element schema is derived and is not repeated. There is at most one list-offset
+Aux per logical target. Listing the feature with no valid payload does not
+satisfy it. Each entry is the extent-relative compact decoder cursor immediately
+before its element. There is exactly one entry per element. Offsets are
+non-decreasing and `0 <= offset <= target.len`; equal offsets and `offset == len`
+are valid for zero-sized elements. Admission walks the list once and compares
+every cursor. An invalid optional index is discarded with a diagnostic; an
+invalid required index rejects the file. Sequential iteration remains available.
 ## Integrity and identity
 
 Revision 1 defines `org.bearcove.phon.blake3-256-v1`: 32 digest bytes over exactly the
@@ -1664,42 +1678,35 @@ all of them.
 One safety contract stated elsewhere is part of this discipline:
 `r[descriptors.borrowed]` (a borrowed value's lifetime is bound to the input
 buffer). The borrow contract is a hard requirement, not advice: an
-implementation must tie a borrowed value's lifetime to the buffer it points into
-— in a language without lifetimes, by copying instead of borrowing — so a freed
-buffer can never leave a dangling view.
+implementation must tie a borrowed value's lifetime to the buffer it points
+into—or copy instead—so a freed buffer can never leave a dangling view.
 
 # Codegen
 
 phon schemas come from Rust types via facet (see [Base concepts](#base-concepts)).
-Codegen turns those schemas into source for the other languages a system
-speaks.
+Codegen turns those schemas into source for the other languages a system speaks.
 
 > r[codegen.emits]
 >
-> For each target language, codegen emits two things per schema: the type
-> definitions a programmer writes against, and the schema itself as a constant
-> — the self-describing phon bytes of the `Schema` value, which the peer's own
-> phon implementation parses into a `Schema` at startup or on first use. The
-> peer ships with its schemas baked in and never derives or fetches them at
-> runtime.
+> For each target language, codegen emits the type definitions a programmer
+> writes against and one `SchemaBundleEnvelope { format: 1, body:
+> SchemaBundleV1 }` constant containing that generated surface's complete schema
+> closure. A one-schema surface still uses a one-member bundle. The peer parses
+> and admits the bundle at startup or first use; it never derives or fetches
+> schemas at runtime.
 
 > r[codegen.schema-is-source-of-truth]
 >
-> A non-Rust peer never re-derives a schema from its generated types. The
-> schema bytes emitted from the Rust-side schema are the source of truth; the
-> generated types exist for the programmer's convenience. This guarantees the
-> peer's `SchemaId` matches the Rust origin exactly — a peer that re-derived
-> from, say, TypeScript types might hash to something different, because the
-> mapping from phon types to a given language is not always one-to-one.
+> A non-Rust peer never re-derives a schema from its generated types. The bundle
+> bytes emitted from the Rust-side schemas are authoritative, so every peer uses
+> exactly the originating `SchemaId`s.
 
 # Crates and packages
 
-This section is implementation organization, not wire contract — like the
-language sections below, it's how each implementation is built, and two
-implementations packaged differently still interoperate. It's in the spec
-because the boundaries are load-bearing: a package with no dependency on a
-language's reflection *cannot* leak that reflection into the engine, which is
-how phon keeps execution backend-blind structurally rather than by discipline.
+This section is implementation organization, not wire contract—like the
+language sections below, it describes how each implementation is built. The
+boundaries are load-bearing: package dependency edges prevent the engine from
+reaching language reflection or derive machinery.
 
 Every implementation separates the same four concerns, and each boundary is a
 real package, not merely a module:
