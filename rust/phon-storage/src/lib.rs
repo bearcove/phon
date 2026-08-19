@@ -732,22 +732,6 @@ impl<'a, 'document> AlignedValue<'a, 'document> {
         }
     }
 
-    /// Number of elements in a list, set, array, or tuple.
-    pub fn len(&self) -> Result<usize, AlignedError> {
-        match resolve_aligned(self.document.registry, &self.schema)? {
-            compact::Resolved::Composite(
-                SchemaKind::List { .. } | SchemaKind::Set { .. } | SchemaKind::Array { .. },
-            ) => usize_from_u64(read_u64(self.document.bytes, self.offset + 16)?),
-            compact::Resolved::Composite(SchemaKind::Tuple { ref elements }) => Ok(elements.len()),
-            _ => Err(AlignedError::TypeMismatch("sequence")),
-        }
-    }
-
-    /// Whether this sequence contains no elements.
-    pub fn is_empty(&self) -> Result<bool, AlignedError> {
-        Ok(self.len()? == 0)
-    }
-
     pub fn field(&self, name: &str) -> Result<Self, AlignedError> {
         match resolve_aligned(self.document.registry, &self.schema)? {
             compact::Resolved::Composite(SchemaKind::Struct { fields, .. }) => {
