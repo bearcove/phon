@@ -134,14 +134,6 @@ pub struct DenseRowRef<'a> {
     fields: &'a [DenseField],
 }
 
-/// Schema-validated offset for a `u8` field in a dense row.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct DenseU8Field(usize);
-
-/// Schema-validated offset for a `u32` field in a dense row.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct DenseU32Field(usize);
-
 impl DenseRowRef<'_> {
     fn field(&self, name: &str, expected: Primitive) -> Result<&DenseField, AlignedError> {
         let field = self
@@ -164,24 +156,9 @@ impl DenseRowRef<'_> {
         Ok(self.bytes[field.offset])
     }
 
-    pub fn u8_at(&self, field: DenseU8Field) -> Result<u8, AlignedError> {
-        self.bytes
-            .get(field.0)
-            .copied()
-            .ok_or(AlignedError::ReferenceOutOfBounds {
-                offset: field.0 as u64,
-                len: 1,
-                file_len: self.bytes.len(),
-            })
-    }
-
     pub fn u32(&self, name: &str) -> Result<u32, AlignedError> {
         let field = self.field(name, Primitive::U32)?;
         read_u32(self.bytes, field.offset)
-    }
-
-    pub fn u32_at(&self, field: DenseU32Field) -> Result<u32, AlignedError> {
-        read_u32(self.bytes, field.0)
     }
 
     pub fn i32(&self, name: &str) -> Result<i32, AlignedError> {
@@ -302,30 +279,6 @@ impl<'a> DenseRange<'a> {
     #[must_use]
     pub const fn payload(&self) -> &'a [u8] {
         self.payload
-    }
-
-    pub fn u8_field(&self, name: &str) -> Result<DenseU8Field, AlignedError> {
-        self.field_offset(name, Primitive::U8).map(DenseU8Field)
-    }
-
-    pub fn u32_field(&self, name: &str) -> Result<DenseU32Field, AlignedError> {
-        self.field_offset(name, Primitive::U32).map(DenseU32Field)
-    }
-
-    fn field_offset(&self, name: &str, expected: Primitive) -> Result<usize, AlignedError> {
-        let field = self
-            .fields
-            .iter()
-            .find(|field| field.name == name)
-            .ok_or_else(|| AlignedError::UnknownField(name.to_owned()))?;
-        if field.primitive != expected {
-            return Err(AlignedError::WrongDenseFieldType {
-                field: name.to_owned(),
-                expected,
-                actual: field.primitive,
-            });
-        }
-        Ok(field.offset)
     }
     pub fn row(&self, index: usize) -> Result<&'a [u8], AlignedError> {
         if index >= self.count {

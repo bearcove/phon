@@ -78,16 +78,3 @@ fn dense_profile_is_deterministic_and_borrows_mmap_payload() {
     drop(mapping);
     std::fs::remove_file(path).expect("remove");
 }
-
-#[test]
-fn dense_fields_can_be_resolved_once_for_repeated_mmap_reads() {
-    let (registry, root, rows) = fixture();
-    let bytes = DenseRangeWriter::encode(&rows, root, &registry).expect("encode");
-    let range = DenseRange::parse(&bytes, root, &registry).expect("parse");
-    let kind = range.u8_field("kind").expect("kind field");
-    let state = range.u32_field("state").expect("state field");
-
-    let row = range.typed_row(1).expect("row");
-    assert_eq!(row.u8_at(kind).expect("kind"), 3);
-    assert_eq!(row.u32_at(state).expect("state"), 11);
-}
