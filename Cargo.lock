@@ -425,15 +425,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
-name = "memmap2"
-version = "0.9.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d1219ed1b7f229ee7104d281dd01d6802fe28bb6e95d292942c4daacdeb798c0"
-dependencies = [
- "libc",
-]
-
-[[package]]
 name = "miniz_oxide"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -516,7 +507,6 @@ dependencies = [
  "facet-value",
  "phon-ir",
  "phon-schema",
- "phon-storage",
  "proptest",
  "weavy",
 ]
@@ -546,16 +536,6 @@ dependencies = [
  "blake3",
  "facet-value",
  "taxon",
-]
-
-[[package]]
-name = "phon-storage"
-version = "0.2.0-rc.5"
-dependencies = [
- "blake3",
- "facet-value",
- "memmap2",
- "phon-schema",
 ]
 
 [[package]]
