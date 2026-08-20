@@ -64,7 +64,7 @@ pub fn schema_bundle_bytes(module: &Module) -> Result<Vec<u8>, phon_schema::Deco
     schema_bundle_to_bytes(&module.schemas)
 }
 
-/// Render JUST a named phon [`Registry`] for `module`'s schemas (no type
+/// Render JUST a named phon `Registry` for `module`'s schemas (no type
 /// declarations, no `schemaId`). The generated source carries one canonical
 /// `SchemaBundleEnvelope` constant and admits it through the language runtime.
 /// Used by RPC codegen, which supplies its own channel-aware declarations.
