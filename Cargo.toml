@@ -22,9 +22,9 @@ homepage = "https://github.com/bearcove/phon"
 [workspace.dependencies]
 blake3 = { version = "1", default-features = false }
 copypatch = { git = "https://github.com/bearcove/weavy", rev = "743a7abe8f999ab4122df1cc02e2441849210a23" }
-facet = { git = "https://github.com/facet-rs/facet", rev = "87c7bda5347edcdcdb8a67fcfa279722438d2156" }
-facet-json = { git = "https://github.com/facet-rs/facet", rev = "87c7bda5347edcdcdb8a67fcfa279722438d2156" }
-facet-value = { git = "https://github.com/facet-rs/facet", rev = "87c7bda5347edcdcdb8a67fcfa279722438d2156" }
+facet = "0.50.0-rc.7"
+facet-json = "0.50.0-rc.7"
+facet-value = "0.50.0-rc.7"
 phon = { path = "rust/phon", version = "0.2.0-rc.5" }
 phon-codegen = { path = "rust/phon-codegen", version = "0.2.0-rc.5" }
 phon-conformance = { path = "rust/phon-conformance", version = "0.2.0-rc.5" }
