@@ -3,7 +3,6 @@ use std::collections::BTreeSet;
 const WORKSPACE: &str = include_str!("../../../Cargo.toml");
 const PHON_SCHEMA: &str = include_str!("../../phon-schema/Cargo.toml");
 const PHON_IR: &str = include_str!("../../phon-ir/Cargo.toml");
-const PHON_STORAGE: &str = include_str!("../../phon-storage/Cargo.toml");
 const PHON_ENGINE: &str = include_str!("../../phon-engine/Cargo.toml");
 const PHON_JIT: &str = include_str!("../../phon-jit/Cargo.toml");
 const PHON: &str = include_str!("../Cargo.toml");
@@ -15,7 +14,6 @@ fn rust_workspace_keeps_contract_engine_jit_and_binding_packages_split() {
     for member in [
         "rust/phon-schema",
         "rust/phon-ir",
-        "rust/phon-storage",
         "rust/phon-engine",
         "rust/phon-jit",
         "rust/phon",
@@ -45,24 +43,8 @@ fn rust_workspace_keeps_contract_engine_jit_and_binding_packages_split() {
         "IR package must not depend upward on engine, JIT, binding, or facet: {ir:?}"
     );
 
-    let storage = dependency_names(PHON_STORAGE);
-    assert!(
-        storage.contains("phon-schema"),
-        "phon-storage deps: {storage:?}"
-    );
-    assert!(
-        storage.is_disjoint(&set([
-            "weavy",
-            "phon-ir",
-            "phon-engine",
-            "phon-jit",
-            "phon",
-            "facet"
-        ])),
-        "storage package must stay below the engine and reflection binding: {storage:?}"
-    );
     let engine = dependency_names(PHON_ENGINE);
-    for dep in ["phon-schema", "phon-storage", "phon-ir"] {
+    for dep in ["phon-schema", "phon-ir"] {
         assert!(engine.contains(dep), "phon-engine deps: {engine:?}");
     }
     assert!(
