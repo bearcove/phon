@@ -26,6 +26,7 @@ use facet_value::{
     ValueType,
 };
 
+use crate::QualifiedName;
 use crate::bytes::{
     DecodeError, Reader, Sink, write_bool, write_bytes, write_f64, write_i64, write_i128,
     write_str, write_u8, write_u32, write_u64, write_u128,
@@ -345,6 +346,20 @@ fn enc_kind<S: Sink>(out: &mut S, k: &SchemaKind) {
                 }
             }
         }
+        SchemaKind::Semantic {
+            name,
+            args,
+            representation,
+        } => {
+            write_str(out, "Semantic");
+            st(out, "Semantic", 3);
+            write_str(out, "name");
+            v_str(out, name.as_str());
+            write_str(out, "args");
+            enc_ref_list(out, args);
+            write_str(out, "representation");
+            enc_ref(out, representation);
+        }
     }
 }
 
@@ -554,6 +569,16 @@ impl SchemaDecoder<'_> {
     fn unit(&mut self) -> Result<(), DecodeError> {
         expect(&mut self.reader, tag::UNIT, "unit")
     }
+    fn struct_begin_named(&mut self, name: &'static str, fields: u32) -> Result<(), DecodeError> {
+        expect(&mut self.reader, tag::STRUCT, "struct")?;
+        if self.reader.read_str()? != name {
+            return Err(DecodeError::Malformed("struct name"));
+        }
+        if self.reader.read_u32()? != fields {
+            return Err(DecodeError::Malformed("struct field count"));
+        }
+        Ok(())
+    }
 
     fn struct_begin(&mut self, fields: u32) -> Result<(), DecodeError> {
         expect(&mut self.reader, tag::STRUCT, "struct")?;
@@ -564,9 +589,21 @@ impl SchemaDecoder<'_> {
         Ok(())
     }
 
+    fn field_name_exact(&mut self, expected: &'static str) -> Result<(), DecodeError> {
+        if self.reader.read_str()? != expected {
+            return Err(DecodeError::Malformed("struct field name"));
+        }
+        Ok(())
+    }
+
     fn field_name(&mut self) -> Result<(), DecodeError> {
         self.reader.read_str()?;
         Ok(())
+    }
+
+    fn qualified_name(&mut self) -> Result<QualifiedName, DecodeError> {
+        let name = self.string()?;
+        QualifiedName::try_from(name.as_str()).map_err(|_| DecodeError::Malformed("qualified name"))
     }
 
     fn list_len(&mut self) -> Result<usize, DecodeError> {
@@ -577,16 +614,16 @@ impl SchemaDecoder<'_> {
     // r[impl validate.depth]
     fn schema(&mut self, depth: usize) -> Result<Schema, DecodeError> {
         check_depth(depth)?;
-        self.struct_begin(3)?;
-        self.field_name()?;
+        self.struct_begin_named("Schema", 3)?;
+        self.field_name_exact("id")?;
         let id = SchemaId::from_raw(self.u64()?);
-        self.field_name()?;
+        self.field_name_exact("type_params")?;
         let count = self.list_len()?;
         let mut type_params = self.reserve::<String>(count)?;
         for _ in 0..count {
             type_params.push(self.string()?);
         }
-        self.field_name()?;
+        self.field_name_exact("kind")?;
         let kind = self.kind(depth + 1)?;
         Ok(Schema {
             id,
@@ -717,6 +754,20 @@ impl SchemaDecoder<'_> {
                     }
                 };
                 SchemaKind::External { kind, metadata }
+            }
+            "Semantic" => {
+                self.struct_begin_named("Semantic", 3)?;
+                self.field_name_exact("name")?;
+                let name = self.qualified_name()?;
+                self.field_name_exact("args")?;
+                let args = self.ref_list(depth + 1)?;
+                self.field_name_exact("representation")?;
+                let representation = self.schema_ref(depth + 1)?;
+                SchemaKind::Semantic {
+                    name: name.into(),
+                    args,
+                    representation,
+                }
             }
             unknown => return Err(DecodeError::UnknownVariant(self.copy_str(unknown)?)),
         })
@@ -1367,6 +1418,51 @@ mod tests {
     }
 
     #[test]
+    fn imported_taxon_identity_distinguishes_ordered_type_parameters() {
+        let generic_tuple = |type_params: &[&str]| Schema {
+            id: SchemaId::from_raw(1),
+            type_params: type_params.iter().map(|name| (*name).to_string()).collect(),
+            kind: SchemaKind::Tuple {
+                elements: vec![SchemaRef::var("T"), SchemaRef::var("U")],
+            },
+        };
+
+        let tu = crate::resolve_ids(vec![generic_tuple(&["T", "U"])])[0].id;
+        let ut = crate::resolve_ids(vec![generic_tuple(&["U", "T"])])[0].id;
+        assert_ne!(tu, ut);
+    }
+
+    #[test]
+    fn imported_taxon_identity_propagates_nested_cycle_parameter_changes() {
+        let cycle = |second_params: &[&str]| {
+            vec![
+                Schema {
+                    id: SchemaId::from_raw(10),
+                    type_params: vec!["T".to_string(), "U".to_string()],
+                    kind: SchemaKind::Tuple {
+                        elements: vec![SchemaRef::concrete(SchemaId::from_raw(20))],
+                    },
+                },
+                Schema {
+                    id: SchemaId::from_raw(20),
+                    type_params: second_params
+                        .iter()
+                        .map(|name| (*name).to_string())
+                        .collect(),
+                    kind: SchemaKind::Tuple {
+                        elements: vec![SchemaRef::concrete(SchemaId::from_raw(10))],
+                    },
+                },
+            ]
+        };
+
+        let canonical = crate::resolve_ids(cycle(&["T", "U"]));
+        let reordered = crate::resolve_ids(cycle(&["U", "T"]));
+        assert_ne!(canonical[0].id, reordered[0].id);
+        assert_ne!(canonical[1].id, reordered[1].id);
+    }
+
+    #[test]
     // r[verify type-system.canonical-form]
     fn roundtrip_struct() {
         roundtrip(&Schema {
@@ -1388,6 +1484,40 @@ mod tests {
                 ],
             },
         });
+    }
+
+    #[test]
+    fn roundtrip_semantic_schema_with_canonical_qualified_name() {
+        let schema = Schema {
+            id: SchemaId::from_raw(9),
+            type_params: vec!["T".to_string()],
+            kind: SchemaKind::Semantic {
+                name: QualifiedName::try_from("org.bearcove.phon.region-ref-v1")
+                    .unwrap()
+                    .into(),
+                args: vec![SchemaRef::var("T")],
+                representation: concrete(Primitive::U32),
+            },
+        };
+        roundtrip(&schema);
+    }
+
+    #[test]
+    fn semantic_schema_decoder_rejects_noncanonical_name_before_exposure() {
+        let schema = Schema {
+            id: SchemaId::from_raw(9),
+            type_params: Vec::new(),
+            kind: SchemaKind::Semantic {
+                name: taxon::SemanticName::try_from("Org.example").unwrap(),
+                args: Vec::new(),
+                representation: concrete(Primitive::U32),
+            },
+        };
+        let bytes = schema_to_bytes(&schema);
+        assert!(matches!(
+            schema_from_bytes(&bytes, DecodeLimits::DEFAULT),
+            Err(DecodeError::Malformed("qualified name"))
+        ));
     }
 
     #[test]

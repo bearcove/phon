@@ -24,7 +24,10 @@ pub use source::{Builder, Module, Root};
 mod tests {
     use super::*;
     use facet::Facet;
-    use phon_schema::{DecodeLimits, schema_from_bytes, schema_to_bytes};
+    use phon_schema::{
+        DecodeLimits, SchemaBundleLimits, schema_bundle_from_bytes, schema_from_bytes,
+        schema_to_bytes,
+    };
 
     #[derive(Facet)]
     struct Point {
@@ -71,6 +74,15 @@ mod tests {
     }
 
     #[test]
+    fn emitted_schema_bundle_is_complete_and_admitted() {
+        let module = module();
+        let bytes = typescript::schema_bundle_bytes(&module).expect("schema bundle encodes");
+        let bundle = schema_bundle_from_bytes(&bytes, SchemaBundleLimits::default())
+            .expect("schema bundle admits");
+        assert_eq!(bundle.schemas(), module.schemas);
+    }
+
+    #[test]
     // r[verify codegen.emits]
     // r[verify codegen.schema-is-source-of-truth]
     fn typescript_renders_the_expected_shapes() {
@@ -99,5 +111,8 @@ mod tests {
         assert!(ts.contains("export const registry = new Registry("));
         assert!(ts.contains("export const schemaId = {"));
         assert!(ts.contains("Person: 0x"));
+        assert!(ts.contains("export const schemaBundle = hexToBytes(\"50484f4e53434d31"));
+        assert!(!ts.contains("SCHEMA_BYTES"));
+        assert!(!ts.contains("schemaFromBytes"));
     }
 }

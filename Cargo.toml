@@ -20,10 +20,10 @@ homepage = "https://github.com/bearcove/phon"
 
 [workspace.dependencies]
 blake3 = { version = "1", default-features = false }
-copypatch = { git = "https://github.com/bearcove/weavy", rev = "743a7abe8f999ab4122df1cc02e2441849210a23" }
-facet = "0.50.0-rc.5"
-facet-json = "0.50.0-rc.5"
-facet-value = "0.50.0-rc.5"
+copypatch = { git = "https://github.com/bearcove/weavy", rev = "cc6ef25" }
+facet = "0.50.0-rc.7"
+facet-json = "0.50.0-rc.7"
+facet-value = "0.50.0-rc.7"
 phon = { path = "rust/phon", version = "0.2.0-rc.5" }
 phon-codegen = { path = "rust/phon-codegen", version = "0.2.0-rc.5" }
 phon-conformance = { path = "rust/phon-conformance", version = "0.2.0-rc.5" }
@@ -31,16 +31,18 @@ phon-engine = { path = "rust/phon-engine", version = "0.2.0-rc.5" }
 phon-ir = { path = "rust/phon-ir", version = "0.2.0-rc.5" }
 phon-jit = { path = "rust/phon-jit", version = "0.2.0-rc.5" }
 phon-schema = { path = "rust/phon-schema", version = "0.2.0-rc.5" }
-taxon = { git = "https://github.com/bearcove/taxon", rev = "c0369bcfceb8e85ccc433bb6478161cd8124c7e3" }
-weavy = { git = "https://github.com/bearcove/weavy", rev = "743a7abe8f999ab4122df1cc02e2441849210a23" }
+taxon = { git = "https://github.com/bearcove/taxon", rev = "2bb2c2e90c83d8f35b0f5a30f7ad022987303471" }
+weavy = { git = "https://github.com/bearcove/weavy", rev = "cc6ef25" }
 proptest = "1"
 tracing = { version = "0.1.43", default-features = false, features = ["std", "attributes"] }
 tracing-subscriber = { version = "0.3.22", default-features = false, features = ["fmt", "std", "env-filter"] }
 
 [patch.crates-io]
-copypatch = { git = "https://github.com/bearcove/weavy", rev = "743a7abe8f999ab4122df1cc02e2441849210a23" }
-weavy = { git = "https://github.com/bearcove/weavy", rev = "743a7abe8f999ab4122df1cc02e2441849210a23" }
+copypatch = { git = "https://github.com/bearcove/weavy", rev = "cc6ef25" }
+weavy = { git = "https://github.com/bearcove/weavy", rev = "cc6ef25" }
 
+[patch."https://github.com/bearcove/phon"]
+phon-schema = { path = "rust/phon-schema" }
 
 [workspace.lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(facet_no_doc)", "cfg(kani)"] }
