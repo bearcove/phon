@@ -12,3 +12,4 @@ probes/**/*.dSYM
 node_modules/
 dist/
 *.tsbuildinfo
+.cache

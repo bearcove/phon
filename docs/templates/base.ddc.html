@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}{{ config.title }}{% endblock %}</title>
+    {% if config.description %}
+    <meta name="description" content="{{ config.description }}">{% endif %}
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Commissioner:wght@400..700&family=Datatype:wght@400;500;700&family=Outfit:wght@400..700&display=swap">
+    <link rel="stylesheet" href="{{ get_url(path='main.css') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ get_url(path='favicon.svg') }}">
+</head>
+
+<body>
+    {% set current_path = "/" %}
+    {% if section is defined %}{% set current_path = section.path %}{% endif %}
+    {% if page is defined %}{% set current_path = page.path %}{% endif %}
+
+    <header class="site-header">
+        <div class="site-header-inner">
+            <div class="header-lead">
+                <a class="brand" href="/" aria-label="phon home">
+                    <span class="brand-text">
+                        <strong>bearcove</strong>
+                        <span>phon</span>
+                    </span>
+                </a>
+
+                <nav class="breadcrumbs" aria-label="Breadcrumb">
+                    {% block breadcrumb %}{% endblock %}
+                </nav>
+            </div>
+
+            <div id="search" class="search-slot" aria-label="Search"></div>
+
+            <div class="page-actions">
+                {% block actions %}{% endblock %}
+            </div>
+        </div>
+    </header>
+
+    <div class="site-shell">
+        <aside class="sidebar" aria-label="Documentation sections">
+            <nav class="sidebar-nav">
+                <a class="sidebar-home{% if current_path == "/" %} is-active{% endif %}" href="/">Overview</a>
+
+                {# `root` doesn't expose `subsections`, but get_section(path="/") returns a
+                   full section value that does — so we walk the tree from there, and expand
+                   the branch the current page lives in. #}
+                {% set tree = get_section(path="/") %}
+                {% if tree %}
+                {% for sec in tree.subsections %}
+                <section class="sidebar-section">
+                    <a class="sidebar-section-title{% if current_path == sec.path %} is-active{% endif %}"
+                        href="{{ sec.permalink }}">{{ sec.title }}</a>
+                    {% if current_path == sec.path or (sec.path ~ "/") in current_path %}
+                    {% set full = get_section(path=sec.path) %}
+                    {% if full and (full.pages or full.subsections) %}
+                    <ul>
+                        {% for p in full.pages %}
+                        <li>
+                            <a class="{% if current_path == p.path %}is-active{% endif %}"
+                                href="{{ p.permalink }}">{{ p.title }}</a>
+                        </li>
+                        {% endfor %}
+                        {% for sub in full.subsections %}
+                        <li class="sidebar-subsection">
+                            <a class="{% if current_path == sub.path %}is-active{% endif %}"
+                                href="{{ sub.permalink }}">{{ sub.title }}</a>
+                            {% if sub.pages and (sub.path ~ "/") in current_path %}
+                            <ul>
+                                {% for p in sub.pages %}
+                                <li>
+                                    <a class="{% if current_path == p.path %}is-active{% endif %}"
+                                        href="{{ p.permalink }}">{{ p.title }}</a>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                            {% endif %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                    {% endif %}
+                </section>
+                {% endfor %}
+                {% endif %}
+            </nav>
+        </aside>
+
+        <div class="content-column">
+            <main class="content">
+                {% block content %}{% endblock %}
+            </main>
+        </div>
+    </div>
+
+    <footer class="site-footer">
+        <a href="/">phon</a>
+        <a href="https://github.com/bearcove/phon">Source on GitHub</a>
+        <a href="https://github.com/bearcove/dodeca">Built with Dodeca</a>
+    </footer>
+
+    <script>
+        (() => {
+            const absoluteFormatter = new Intl.DateTimeFormat(undefined, {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+            });
+            const relativeFormatter = new Intl.RelativeTimeFormat(undefined, {numeric: "auto"});
+
+            const UNITS = [
+                ["year", 365 * 24 * 60 * 60],
+                ["month", 30 * 24 * 60 * 60],
+                ["week", 7 * 24 * 60 * 60],
+                ["day", 24 * 60 * 60],
+                ["hour", 60 * 60],
+                ["minute", 60],
+                ["second", 1],
+            ];
+
+            const formatRelative = (deltaSeconds) => {
+                const abs = Math.abs(deltaSeconds);
+                if (abs < 45) return relativeFormatter.format(0, "second");
+                for (const [unit, secs] of UNITS) {
+                    if (abs >= secs) {
+                        return relativeFormatter.format(Math.round(deltaSeconds / secs), unit);
+                    }
+                }
+                return relativeFormatter.format(0, "second");
+            };
+
+            const renderTimes = (root = document) => {
+                const now = Date.now() / 1000;
+                root.querySelectorAll("time.local-date[data-timestamp]").forEach((element) => {
+                    const seconds = Number(element.dataset.timestamp);
+                    if (!Number.isFinite(seconds)) return;
+
+                    const date = new Date(seconds * 1000);
+                    element.dateTime = date.toISOString();
+                    element.textContent = formatRelative(seconds - now);
+                    element.title = absoluteFormatter.format(date);
+                });
+            };
+
+            renderTimes();
+            setInterval(renderTimes, 60_000);
+
+            new MutationObserver((mutations) => {
+                for (const mutation of mutations) {
+                    for (const node of mutation.addedNodes) {
+                        if (node.nodeType === Node.ELEMENT_NODE) {
+                            renderTimes(node);
+                        }
+                    }
+                }
+            }).observe(document.body, {childList: true, subtree: true});
+        })();
+    </script>
+
+    <script>
+        (() => {
+            const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+            if (!isMac) document.documentElement.style.setProperty("--kbd-hint", '"Ctrl K"');
+
+            const findInput = () => document.querySelector("#search .ds-input, #search input");
+
+            const setPlaceholder = () => {
+                const input = findInput();
+                if (input) { input.placeholder = "Search"; return true; }
+                return false;
+            };
+            if (!setPlaceholder()) {
+                const iv = setInterval(() => { if (setPlaceholder()) clearInterval(iv); }, 120);
+                setTimeout(() => clearInterval(iv), 6000);
+            }
+
+            document.addEventListener("keydown", (e) => {
+                const input = findInput();
+                if (!input) return;
+                if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+                    e.preventDefault();
+                    input.focus();
+                    input.select();
+                } else if (e.key === "Escape" && document.activeElement === input) {
+                    input.blur();
+                }
+            });
+        })();
+    </script>
+</body>
+
+</html>

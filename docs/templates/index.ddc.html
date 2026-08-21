@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block title %}{{ section.title }}{% endblock %}
+
+{% block content %}
+<article class="doc doc-home">
+    <header class="doc-header">
+        <p class="eyebrow">Specification</p>
+        <h1>{{ section.title }}</h1>
+        {% if config.description %}<p class="lede">{{ config.description }}</p>{% endif %}
+    </header>
+
+    <div class="doc-body">
+        {{ section.content | safe }}
+    </div>
+
+    {% if section.pages %}
+    <section class="link-panel" aria-labelledby="browse-spec">
+        <h2 id="browse-spec">Pages</h2>
+        <div class="page-list">
+            {% for item in section.pages %}
+            <a class="page-row" href="{{ item.permalink }}">
+                <span>{{ item.title }}</span>
+            </a>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+</article>
+{% endblock %}

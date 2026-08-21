@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page.title }} - {{ config.title }}{% endblock %}
+
+{% block breadcrumb %}
+<span>/</span><span>{{ page.title }}</span>
+{% endblock %}
+
+{% block content %}
+{% set page_parent = page.path | path_parent %}
+{% set page_file = "/content" ~ (page_parent if page_parent != "/" else "") ~ "/" ~ (page.path | path_basename) ~ ".md" %}
+{% set source_url = "https://github.com/bearcove/phon/blob/main/docs" ~ page_file %}
+{% set history_url = "https://github.com/bearcove/phon/commits/main/docs" ~ page_file %}
+<article class="doc">
+    <header class="doc-header">
+        <p class="eyebrow">Specification</p>
+        <h1>{{ page.title }}</h1>
+        <p class="doc-meta">Updated <a class="doc-meta-link" href="{{ history_url }}"><time class="local-date" data-timestamp="{{ page.last_updated }}">recently</time></a></p>
+    </header>
+
+    <div class="doc-body">
+        {{ page.content | safe }}
+    </div>
+
+    <footer class="doc-footer">
+        <a class="doc-meta-link" href="{{ source_url }}">View source on GitHub</a>
+        <a class="doc-meta-link" href="{{ history_url }}">History</a>
+    </footer>
+</article>
+{% endblock %}

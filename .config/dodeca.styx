@@ -1,0 +1,54 @@
+@schema {id crate:dodeca-config@1, cli ddc}
+
+// Dodeca configuration for the phon spec site.
+//
+// The spec (docs/content/spec.md) is the source of truth: every `r[...]`
+// requirement is tracked against the three implementations (Rust, TypeScript,
+// Swift) through their `r[impl ...]` / `r[verify ...]` markers. Use
+// `ddc coverage ...` or the live `/_dodeca/coverage/...` endpoints, selecting
+// an implementation with `--impl rust|typescript|swift`.
+
+source {
+    content docs/content
+    repo "https://github.com/bearcove/phon"
+    impls (
+        {
+            name rust
+            root .
+            include ("rust/**/src/**/*.rs")
+            exclude ("**/target/**")
+            test_include ("rust/**/tests/**/*.rs")
+        }
+        {
+            name typescript
+            root .
+            include ("typescript/**/src/**/*.ts")
+            exclude ("**/dist/**" "**/node_modules/**")
+            test_include ("typescript/**/src/**/*.test.ts")
+        }
+        {
+            name swift
+            root .
+            include (
+                "swift/**/Sources/**/*.swift"
+                "swift/**/Sources/**/*.c"
+                "swift/**/Sources/**/*.h"
+            )
+            exclude ("**/.build/**")
+            test_include ("swift/**/Tests/**/*.swift")
+        }
+    )
+}
+
+site {
+    output docs/public
+    templates docs/templates
+    static docs/static
+
+    syntax_highlight {
+        light_theme github-light
+        dark_theme tokyo-night
+    }
+
+    stable_assets (favicon.svg)
+}
