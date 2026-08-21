@@ -24,12 +24,12 @@ copypatch = "0.2.0-rc.5"
 facet = "0.50.0-rc.7"
 facet-json = "0.50.0-rc.7"
 facet-value = "0.50.0-rc.7"
-phon = { path = "rust/phon", version = "0.2.0-rc.6" }
-phon-codegen = { path = "rust/phon-codegen", version = "0.2.0-rc.6" }
-phon-conformance = { path = "rust/phon-conformance", version = "0.2.0-rc.6" }
-phon-engine = { path = "rust/phon-engine", version = "0.2.0-rc.6" }
-phon-ir = { path = "rust/phon-ir", version = "0.2.0-rc.6" }
-phon-jit = { path = "rust/phon-jit", version = "0.2.0-rc.6" }
+phon = { path = "rust/phon", version = "0.2.0-rc.7" }
+phon-codegen = { path = "rust/phon-codegen", version = "0.2.0-rc.7" }
+phon-conformance = { path = "rust/phon-conformance", version = "0.2.0-rc.7" }
+phon-engine = { path = "rust/phon-engine", version = "0.2.0-rc.7" }
+phon-ir = { path = "rust/phon-ir", version = "0.2.0-rc.7" }
+phon-jit = { path = "rust/phon-jit", version = "0.2.0-rc.7" }
 phon-schema = { path = "rust/phon-schema", version = "0.2.0-rc.6" }
 taxon = "0.2.0-rc.5"
 weavy = "0.2.3-rc.0"
