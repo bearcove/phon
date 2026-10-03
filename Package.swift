@@ -12,7 +12,9 @@ let package = Package(
     platforms: [
         // macOS 15: native `UInt128`/`Int128` (the 128-bit value widths) and
         // `String(validating:as:)` (strict UTF-8 decode).
-        .macOS(.v15)
+        .macOS(.v15),
+        // iOS 18: the same native `UInt128`/`Int128` and `String(validating:as:)` floor.
+        .iOS(.v18),
     ],
     products: [
         .library(name: "Phon", targets: ["Phon"]),
